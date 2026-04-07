@@ -19,6 +19,7 @@ from vividbooks_ops.tools.commission.month_mode import (
 from vividbooks_ops.tools.commission.rules import (
     CATEGORIES_SHARED_INTERACTIVE_PIPELINES,
     COMMISSION_RULES,
+    PIPELINE_ID_TO_INTERACTIVE_KIND,
 )
 
 
@@ -229,11 +230,25 @@ def pipelines_equal(a: str, b: str) -> bool:
     return normalize_pipeline_name(a) == normalize_pipeline_name(b)
 
 
-def interactive_pipeline_kind(pipeline_name: str) -> Optional[str]:
+def extract_deal_pipeline_id(deal: Dict[str, Any]) -> Optional[int]:
+    pid = deal.get("pipeline_id")
+    if pid is None:
+        return None
+    try:
+        return int(pid)
+    except (TypeError, ValueError):
+        return None
+
+
+def interactive_pipeline_kind(
+    pipeline_name: str,
+    pipeline_id: Optional[int] = None,
+) -> Optional[str]:
     """
-    Rozlišení Upsell vs Akvizice podle názvu pipeline z Pipedrive.
-    Pokrývá CZ Sales - Upsell [CZ1/CZ2], SK Sales - Upsell [SK2], Akvizice [CZ1], atd.
+    Rozlišení Upsell vs Akvizice: nejdřív podle pipeline_id (Vividbooks mapa), jinak podle názvu.
     """
+    if pipeline_id is not None and pipeline_id in PIPELINE_ID_TO_INTERACTIVE_KIND:
+        return PIPELINE_ID_TO_INTERACTIVE_KIND[pipeline_id]
     n = normalize_pipeline_name(pipeline_name)
     if not n:
         return None
@@ -267,6 +282,7 @@ def pipeline_id_to_name(
 def find_commission_rule(
     category_label: str,
     pipeline_name: str,
+    pipeline_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     for rule in COMMISSION_RULES:
         cats = list(rule["categories"])
@@ -274,7 +290,7 @@ def find_commission_rule(
             continue
         ikind = rule.get("interactive_kind")
         if ikind:
-            if interactive_pipeline_kind(pipeline_name) == ikind:
+            if interactive_pipeline_kind(pipeline_name, pipeline_id) == ikind:
                 return rule
             continue
         p = rule["pipeline"]
@@ -295,6 +311,7 @@ class DealCommissionRow:
     category_label: str
     category_display: str
     pipeline_name: str
+    pipeline_id: Optional[int]
     currency: str
     value: float
     rate: float
@@ -330,7 +347,7 @@ def row_reporting_segment(r: DealCommissionRow) -> str:
     if base == "posters":
         return "posters"
     if base in CATEGORIES_SHARED_INTERACTIVE_PIPELINES:
-        kind = interactive_pipeline_kind(r.pipeline_name)
+        kind = interactive_pipeline_kind(r.pipeline_name, r.pipeline_id)
         if kind == "akvizice":
             return "interactive_akvizice"
         if kind == "upsell":
@@ -370,7 +387,8 @@ def compute_commissions_for_month(
         )
 
         pl_name = pipeline_id_to_name(deal, pipelines_map)
-        rule = find_commission_rule(cat_norm, pl_name)
+        pl_id = extract_deal_pipeline_id(deal)
+        rule = find_commission_rule(cat_norm, pl_name, pl_id)
         if rule is None:
             continue
 
@@ -405,6 +423,7 @@ def compute_commissions_for_month(
                 category_label=cat_norm,
                 category_display=cat_display,
                 pipeline_name=pl_name,
+                pipeline_id=pl_id,
                 currency=ccy,
                 value=value,
                 rate=rate,
@@ -489,14 +508,18 @@ def exclusion_reason(
     if not cat_norm:
         return "chybí Product category (prázdné nebo nerozpoznané)"
     pl_name = pipeline_id_to_name(deal, pipelines_map)
-    if find_commission_rule(cat_norm, pl_name) is None:
+    pl_id = extract_deal_pipeline_id(deal)
+    if find_commission_rule(cat_norm, pl_name, pl_id) is None:
         disp = _deal_category_display_for_exclusion(deal, category_field_key, option_id_to_label)
         pl = pl_name or "(bez pipeline)"
         hint = ""
         if cat_norm in CATEGORIES_SHARED_INTERACTIVE_PIPELINES and not interactive_pipeline_kind(
-            pl_name
+            pl_name,
+            pl_id,
         ):
-            hint = " — v názvu pipeline chybí rozpoznatelný úsek „ - upsell“ nebo „akvizice“"
+            hint = (
+                " — pipeline není v mapě ID (upsell/akvizice) a v názvu chybí rozpoznatelný upsell/akvizice"
+            )
         return f'žádné pravidlo pro „{disp or cat_norm}“ + pipeline „{pl}“{hint}'
     return ""
 
@@ -636,9 +659,9 @@ def aggregate_by_owner(rows: List[DealCommissionRow]) -> List[Dict[str, Any]]:
 
 def chart_pipeline_bucket_label(r: DealCommissionRow) -> str:
     """Krátký popisek pipeline pro graf kategorie × pipeline."""
-    if r.category_label in ("print", "posters"):
+    if _segment_base_category(r.category_label) in ("print", "posters"):
         return "Libovolný pipeline"
-    kind = interactive_pipeline_kind(r.pipeline_name)
+    kind = interactive_pipeline_kind(r.pipeline_name, r.pipeline_id)
     if kind == "upsell":
         return "Upsell (CZ/SK…)"
     if kind == "akvizice":
