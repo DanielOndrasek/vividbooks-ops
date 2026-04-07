@@ -11,6 +11,13 @@ from dotenv import load_dotenv
 
 from vividbooks_ops.tools.commission.month_mode import normalize_month_date_mode
 
+# Vividbooks: výchozí API klíč custom pole „Product category“ u dealu v Pipedrive.
+# Hodnoty pole odpovídají pravidlům provizí: print, posters, interactive, vividboard.
+# Přepíše se proměnnou PIPEDRIVE_CATEGORY_FIELD_KEY / Secrets category_field_key.
+DEFAULT_PIPEDRIVE_PRODUCT_CATEGORY_FIELD_KEY = (
+    "3f0c870ac132eec72589da1313e2388977c4a74f"
+)
+
 
 def _apply_streamlit_secrets_to_environ() -> None:
     """
@@ -87,10 +94,13 @@ def load_settings(*, load_dotenv_file: bool = True) -> OperationsSettings:
     _apply_streamlit_secrets_to_environ()
     if load_dotenv_file:
         load_dotenv()
+    cat_key = os.getenv("PIPEDRIVE_CATEGORY_FIELD_KEY", "").strip()
+    if not cat_key:
+        cat_key = DEFAULT_PIPEDRIVE_PRODUCT_CATEGORY_FIELD_KEY
     pd = PipedriveSettings(
         api_token=os.getenv("PIPEDRIVE_API_TOKEN", "").strip(),
         domain=os.getenv("PIPEDRIVE_DOMAIN", "").strip(),
-        category_field_key=os.getenv("PIPEDRIVE_CATEGORY_FIELD_KEY", "").strip(),
+        category_field_key=cat_key,
         deal_month_date_field=normalize_month_date_mode(
             os.getenv("PIPEDRIVE_DEAL_MONTH_DATE_FIELD")
         ),

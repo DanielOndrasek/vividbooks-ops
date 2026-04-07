@@ -216,6 +216,9 @@ def main() -> None:
     py, pm = _prev_month(today)
 
     with st.sidebar:
+        st.caption(
+            "Z Pipedrive se berou **jen won** dealy; do měsíce se zařadí podle volby data níže."
+        )
         st.subheader("Období")
         year = st.number_input("Rok", min_value=2000, max_value=2100, value=py, step=1)
         month = st.selectbox(

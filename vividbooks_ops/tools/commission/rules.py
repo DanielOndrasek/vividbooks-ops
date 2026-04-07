@@ -1,5 +1,9 @@
 """Provizní pravidla — rozšiřitelný seznam dictů."""
 
+# Kategorie v pravidlech odpovídají hodnotám custom pole Product category u dealu
+# (výchozí field key v vividbooks_ops.settings.DEFAULT_PIPEDRIVE_PRODUCT_CATEGORY_FIELD_KEY).
+# Data: jen won dealy (API status=won), měsíc podle won_time/close_time — viz nástroj Provize.
+
 # Příklady názvů z Pipedrive (logika párování je v commission.logic.interactive_pipeline_kind).
 PIPELINE_INTERACTIVE_UPSELL = "CZ Sales - Upsell [CZ1]"
 PIPELINE_INTERACTIVE_AKVIZICE = "CZ Sales - Akvizice [CZ1]"
