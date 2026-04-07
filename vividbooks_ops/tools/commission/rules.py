@@ -1,6 +1,6 @@
 """Provizní pravidla — rozšiřitelný seznam dictů."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 # Kategorie v pravidlech odpovídají hodnotám custom pole Product category u dealu
 # (výchozí field key v vividbooks_ops.settings.DEFAULT_PIPEDRIVE_PRODUCT_CATEGORY_FIELD_KEY).
@@ -20,6 +20,10 @@ PIPELINE_ID_TO_INTERACTIVE_KIND: Dict[int, str] = {
     13: "akvizice",  # SK akvizice
     14: "upsell",  # SK upsell
 }
+
+# U interactive/vividboard: pokud nejde určit pipeline (neznámé ID + nerozpoznatelný název),
+# použije se tento druh pro párování pravidla. None = deal se vyřadí (striktní režim).
+INTERACTIVE_PIPELINE_FALLBACK_KIND: Optional[str] = "upsell"
 
 COMMISSION_RULES = [
     {"categories": ["print", "posters"], "pipeline": None, "rate": 0.10},

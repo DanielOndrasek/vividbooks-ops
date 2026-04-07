@@ -26,6 +26,7 @@ from vividbooks_ops.tools.commission.logic import (
     compute_commissions_for_month,
     dataframe_commission_by_category_and_pipeline_bucket,
     dataframe_commission_by_owner_and_category,
+    deal_category_present,
     rows_to_dataframe_rows,
 )
 from vividbooks_ops.tools.commission.rules import COMMISSION_RULES
@@ -138,6 +139,11 @@ def _fetch_context(
             user_map[int(uid)] = str(name)
 
     deals = client.get_all_won_deals()
+    # Seznam /deals často nevrací custom pole — doplníme GET /deals/{id} tam, kde chybí kategorie
+    deals = client.enrich_deals_with_full_details(
+        deals,
+        has_category_value=lambda d: deal_category_present(d, category_field_key),
+    )
     return deals, pipelines_map, user_map, option_map
 
 
@@ -225,6 +231,11 @@ def main() -> None:
             client = get_pipedrive_client(domain, token)
             with st.spinner("Načítám data z Pipedrive…"):
                 deals, pl_map, u_map, opt_map = _fetch_context(client, cat_key)
+            if not opt_map:
+                st.warning(
+                    "Pro zadaný klíč pole kategorie se v Pipedrive **nenašly žádné option mapy** "
+                    "(špatný `key` pole?). ID hodnot z dealů se pak nepřevádí na názvy — ověř klíč v Nastavení."
+                )
             y, m = int(year), int(month)
             rows = compute_commissions_for_month(
                 deals,

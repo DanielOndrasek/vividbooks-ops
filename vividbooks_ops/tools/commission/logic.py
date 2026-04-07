@@ -19,6 +19,7 @@ from vividbooks_ops.tools.commission.month_mode import (
 from vividbooks_ops.tools.commission.rules import (
     CATEGORIES_SHARED_INTERACTIVE_PIPELINES,
     COMMISSION_RULES,
+    INTERACTIVE_PIPELINE_FALLBACK_KIND,
     PIPELINE_ID_TO_INTERACTIVE_KIND,
 )
 
@@ -115,6 +116,29 @@ def deal_currency(deal: Dict[str, Any]) -> str:
     return str(c).strip().upper()
 
 
+def deal_product_category_raw(deal: Dict[str, Any], category_field_key: str) -> Any:
+    """Hodnota custom pole kategorie na dealu (Pipedrive klíč je case-sensitive u některých tenantů)."""
+    k = (category_field_key or "").strip()
+    if not k:
+        return None
+    for cand in dict.fromkeys((k, k.lower())):
+        if cand not in deal:
+            continue
+        v = deal.get(cand)
+        if v is None:
+            continue
+        if isinstance(v, list) and len(v) == 0:
+            continue
+        if isinstance(v, str) and not v.strip():
+            continue
+        return v
+    return None
+
+
+def deal_category_present(deal: Dict[str, Any], category_field_key: str) -> bool:
+    return deal_product_category_raw(deal, category_field_key) is not None
+
+
 def _register_option_keys(out: Dict[str, str], oid: Any, label: str) -> None:
     """Pipedrive vrací id jako int/float/str — mapujeme všechny běžné tvary na stejný label."""
     if oid is None:
@@ -136,8 +160,14 @@ def build_category_option_map(
     category_field_key: str,
 ) -> Dict[str, str]:
     """Mapuje option ID (string) → label pro enum/set pole kategorie."""
+    want = (category_field_key or "").strip().lower()
+    if not want:
+        return {}
     for field in deal_fields:
-        if field.get("key") != category_field_key:
+        fk = field.get("key")
+        if fk is None:
+            continue
+        if str(fk).strip().lower() != want:
             continue
         out: Dict[str, str] = {}
         for opt in field.get("options") or []:
@@ -232,6 +262,8 @@ def pipelines_equal(a: str, b: str) -> bool:
 
 def extract_deal_pipeline_id(deal: Dict[str, Any]) -> Optional[int]:
     pid = deal.get("pipeline_id")
+    if isinstance(pid, dict):
+        pid = pid.get("value", pid.get("id"))
     if pid is None:
         return None
     try:
@@ -290,7 +322,12 @@ def find_commission_rule(
             continue
         ikind = rule.get("interactive_kind")
         if ikind:
-            if interactive_pipeline_kind(pipeline_name, pipeline_id) == ikind:
+            kind = interactive_pipeline_kind(pipeline_name, pipeline_id)
+            if kind is None:
+                kind = INTERACTIVE_PIPELINE_FALLBACK_KIND
+            if kind is None:
+                continue
+            if kind == ikind:
                 return rule
             continue
         p = rule["pipeline"]
@@ -372,7 +409,7 @@ def compute_commissions_for_month(
             continue
         anchor_raw = deal_raw_timestamp_for_month(deal, month_date_mode)
 
-        raw_cat = deal.get(category_field_key)
+        raw_cat = deal_product_category_raw(deal, category_field_key)
         if isinstance(raw_cat, list):
             raw_for_id = raw_cat[0] if raw_cat else None
         else:
@@ -465,7 +502,7 @@ def _deal_category_display_for_exclusion(
     category_field_key: str,
     option_id_to_label: Dict[str, str],
 ) -> str:
-    raw_cat = deal.get(category_field_key)
+    raw_cat = deal_product_category_raw(deal, category_field_key)
     if isinstance(raw_cat, list):
         raw_for_id = raw_cat[0] if raw_cat else None
     else:
@@ -489,7 +526,7 @@ def deal_category_display_raw(
     disp = _deal_category_display_for_exclusion(deal, category_field_key, option_id_to_label)
     if disp:
         return disp
-    raw_cat = deal.get(category_field_key)
+    raw_cat = deal_product_category_raw(deal, category_field_key)
     if raw_cat is None or raw_cat == "":
         return ""
     if isinstance(raw_cat, list):
@@ -503,22 +540,25 @@ def exclusion_reason(
     option_id_to_label: Dict[str, str],
     pipelines_map: Dict[int, str],
 ) -> str:
-    raw_cat = deal.get(category_field_key)
+    raw_cat = deal_product_category_raw(deal, category_field_key)
     cat_norm = normalize_category_label(raw_cat, option_id_to_label)
     if not cat_norm:
-        return "chybí Product category (prázdné nebo nerozpoznané)"
+        return "chybí Product category (prázdné nebo nerozpoznané; zkontroluj klíč pole nebo detail dealu v API)"
     pl_name = pipeline_id_to_name(deal, pipelines_map)
     pl_id = extract_deal_pipeline_id(deal)
     if find_commission_rule(cat_norm, pl_name, pl_id) is None:
         disp = _deal_category_display_for_exclusion(deal, category_field_key, option_id_to_label)
         pl = pl_name or "(bez pipeline)"
         hint = ""
-        if cat_norm in CATEGORIES_SHARED_INTERACTIVE_PIPELINES and not interactive_pipeline_kind(
-            pl_name,
-            pl_id,
+        raw_kind = interactive_pipeline_kind(pl_name, pl_id)
+        if (
+            category_label_matches_rule_categories(cat_norm, list(CATEGORIES_SHARED_INTERACTIVE_PIPELINES))
+            and raw_kind is None
+            and INTERACTIVE_PIPELINE_FALLBACK_KIND is None
         ):
             hint = (
-                " — pipeline není v mapě ID (upsell/akvizice) a v názvu chybí rozpoznatelný upsell/akvizice"
+                " — pipeline není v mapě ID ani v názvu (upsell/akvizice); nastav "
+                "INTERACTIVE_PIPELINE_FALLBACK_KIND nebo PIPELINE_ID_TO_INTERACTIVE_KIND v rules.py"
             )
         return f'žádné pravidlo pro „{disp or cat_norm}“ + pipeline „{pl}“{hint}'
     return ""
@@ -803,6 +843,8 @@ __all__ = [
     "build_value_diagnostics",
     "collect_won_deals_in_month",
     "compute_commissions_for_month",
+    "deal_category_present",
+    "deal_product_category_raw",
     "dataframe_commission_by_category_and_pipeline_bucket",
     "dataframe_commission_by_owner_and_category",
     "normalize_month_date_mode",

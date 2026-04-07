@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import requests
 
@@ -65,6 +65,36 @@ class PipedriveClient:
 
     def get_all_won_deals(self) -> List[Dict[str, Any]]:
         return list(self.iter_paginated("/deals", {"status": "won"}))
+
+    def get_deal(self, deal_id: int) -> Dict[str, Any]:
+        """Jeden deal včetně custom polí — seznam /deals je často oříznutý."""
+        data = self._get(f"/deals/{int(deal_id)}")
+        return data.get("data") or {}
+
+    def enrich_deals_with_full_details(
+        self,
+        deals: List[Dict[str, Any]],
+        *,
+        has_category_value: Callable[[Dict[str, Any]], bool],
+    ) -> List[Dict[str, Any]]:
+        """
+        U dealů bez Product category v odpovědi seznamu znovu načte GET /deals/{id}.
+        """
+        if not deals:
+            return deals
+        out: List[Dict[str, Any]] = []
+        for d in deals:
+            if has_category_value(d):
+                out.append(d)
+                continue
+            try:
+                did = int(d.get("id"))
+            except (TypeError, ValueError):
+                out.append(d)
+                continue
+            full = self.get_deal(did)
+            out.append({**d, **full} if full else d)
+        return out
 
     def get_deal_fields(self) -> List[Dict[str, Any]]:
         data = self._get("/dealFields")
