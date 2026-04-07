@@ -1,0 +1,201 @@
+// Normalizovaný model: Email → Document → Invoice | PaymentProof
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  APPROVER
+  VIEWER
+}
+
+enum EmailStatus {
+  PENDING
+  PROCESSED
+  ERROR
+}
+
+enum DocumentType {
+  UNCLASSIFIED
+  INVOICE
+  PAYMENT_RECEIPT
+  UNKNOWN
+}
+
+enum DocumentStatus {
+  NEW
+  PARSED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  UPLOAD_FAILED
+  NEEDS_REVIEW
+  RECEIVED
+  STORED
+  ERROR
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(VIEWER)
+  createdAt     DateTime  @default(now())
+
+  accounts         Account[]
+  sessions         Session[]
+  auditLogs        AuditLog[]
+  approvedInvoices Invoice[] @relation("InvoiceApprovedBy")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Email {
+  id             String      @id @default(cuid())
+  gmailMessageId String      @unique
+  subject        String
+  sender         String
+  receivedAt     DateTime
+  processedAt    DateTime?
+  status         EmailStatus @default(PENDING)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  documents Document[]
+}
+
+model Document {
+  id                        String         @id @default(cuid())
+  emailId                   String
+  email                     Email          @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  gmailAttachmentId         String
+  originalFilename          String
+  mimeType                  String
+  contentHash               String?
+  extractedText             String?        @db.Text
+  classificationConfidence Float?
+  documentType              DocumentType   @default(UNCLASSIFIED)
+  status                    DocumentStatus @default(NEW)
+  parseError                String?        @db.Text
+  localFilePath             String?
+  aiRawResponse             String?        @db.Text
+  needsManualReview         Boolean        @default(false)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  invoice      Invoice?
+  paymentProof PaymentProof?
+
+  @@unique([emailId, gmailAttachmentId])
+  @@unique([contentHash])
+  @@index([status])
+  @@index([documentType])
+}
+
+model Invoice {
+  id                   String    @id @default(cuid())
+  documentId           String    @unique
+  document             Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  supplierName         String?
+  amountWithoutVat       Decimal?  @db.Decimal(12, 2)
+  amountWithVat        Decimal?  @db.Decimal(12, 2)
+  dueDate              DateTime?
+  invoiceNumber        String?
+  currency             String    @default("CZK")
+  issueDate            DateTime?
+  supplierICO          String?
+  extractionConfidence Float?
+
+  approvedByUserId String?
+  approvedBy       User?     @relation("InvoiceApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.Text
+
+  driveFileId String?
+  driveUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dueDate])
+  @@index([supplierName])
+}
+
+model PaymentProof {
+  id          String    @id @default(cuid())
+  documentId  String    @unique
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  proofType   String?
+  note        String?   @db.Text
+  driveFileId String?
+  driveUrl    String?
+  storedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model ProcessingJob {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  type        String
+  status      String
+  error       String?
+  metadata    Json?
+}

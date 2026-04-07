@@ -13,5 +13,7 @@ st.info("Vyber nástroj nebo **Nastavení integrací** v navigaci vlevo.")
 st.subheader("Dostupné nástroje")
 st.markdown(
     "- **Provize (Pipedrive)** — měsíční výpočet provizí z won dealů.\n"
+    "- **Doklady z Gmailu** — odkaz na webovou aplikaci (stahování z Gmailu, schválení faktur, "
+    "ukládání na Google Drive). Viz stránka v navigaci vlevo.\n"
     "- Další nástroje přibudou jako nové stránky v `pages/`."
 )

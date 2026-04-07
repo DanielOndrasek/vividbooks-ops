@@ -1,0 +1,18 @@
+# Lokální PostgreSQL pro vývoj (invoice-portal).
+# Spusť z tohoto adresáře: docker compose up -d
+# Pak: npx prisma migrate dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: invoices
+    volumes:
+      - invoice_portal_pg:/var/lib/postgresql/data
+
+volumes:
+  invoice_portal_pg:

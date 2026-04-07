@@ -83,8 +83,36 @@ class PipedriveSettings:
 
 
 @dataclass(frozen=True)
+class DokladyWebSettings:
+    """Odkaz na interní Next.js aplikaci (Gmail → doklady) ze Streamlit hubu."""
+
+    app_url: str
+    admin_contact: str
+
+    @property
+    def has_admin_contact(self) -> bool:
+        return bool(self.admin_contact.strip())
+
+
+@dataclass(frozen=True)
 class OperationsSettings:
     pipedrive: PipedriveSettings
+
+
+def get_doklady_web_settings(*, load_dotenv_file: bool = True) -> DokladyWebSettings:
+    """
+    URL webové aplikace dokladů a kontakt na admina.
+    Lokálně: .env (DOKLADY_APP_URL, DOKLADY_ADMIN_CONTACT).
+    Streamlit Cloud: Secrets — buď horní úroveň stejných klíčů, nebo sekce [doklady]
+    s klíči app_url a admin_contact (→ DOKLADY_APP_URL / DOKLADY_ADMIN_CONTACT).
+    """
+    _apply_streamlit_secrets_to_environ()
+    if load_dotenv_file:
+        load_dotenv()
+    return DokladyWebSettings(
+        app_url=os.getenv("DOKLADY_APP_URL", "http://localhost:3000").strip(),
+        admin_contact=os.getenv("DOKLADY_ADMIN_CONTACT", "").strip(),
+    )
 
 
 def load_settings(*, load_dotenv_file: bool = True) -> OperationsSettings:
