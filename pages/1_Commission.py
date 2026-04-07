@@ -14,9 +14,6 @@ import streamlit as st
 from vividbooks_ops.integrations.pipedrive.client import PipedriveClient
 from vividbooks_ops.settings import load_settings
 from vividbooks_ops.tools.commission.logic import (
-    MONTH_DATE_MODE_AUTO,
-    MONTH_DATE_MODE_CLOSE,
-    MONTH_DATE_MODE_WON,
     DealCommissionRow,
     aggregate_by_owner,
     build_category_option_map,
@@ -31,11 +28,9 @@ from vividbooks_ops.tools.commission.logic import (
 )
 from vividbooks_ops.tools.commission.rules import COMMISSION_RULES
 
-_MONTH_MODE_LABELS = {
-    MONTH_DATE_MODE_AUTO: "auto — won_time, jinak close_time",
-    MONTH_DATE_MODE_WON: "jen won_time",
-    MONTH_DATE_MODE_CLOSE: "jen close_time (uzavření)",
-}
+# Po změnách na PipedriveClient zvyš číslo — Streamlit @cache_resource jinak drží starou instanci
+# bez nových metod (AttributeError po deployi / úpravě kódu).
+_PIPEDRIVE_CLIENT_RESOURCE_VERSION = 2
 
 
 def _prev_month(today: date) -> Tuple[int, int]:
@@ -106,8 +101,42 @@ def _chart_category_pipeline(df: pd.DataFrame) -> alt.Chart:
 
 
 @st.cache_resource
-def get_pipedrive_client(domain: str, token: str) -> PipedriveClient:
+def get_pipedrive_client(
+    domain: str,
+    token: str,
+    *,
+    _resource_version: int = _PIPEDRIVE_CLIENT_RESOURCE_VERSION,
+) -> PipedriveClient:
+    _ = _resource_version
     return PipedriveClient(domain, token)
+
+
+def _enrich_won_deals_for_category(
+    client: PipedriveClient,
+    deals: List[Dict[str, Any]],
+    category_field_key: str,
+) -> List[Dict[str, Any]]:
+    """Doplní GET /deals/{id}, kde seznam won dealů nevrací kategorii."""
+    has_cat = lambda d: deal_category_present(d, category_field_key)
+    enrich = getattr(client, "enrich_deals_with_full_details", None)
+    if callable(enrich):
+        return enrich(deals, has_category_value=has_cat)
+    get_deal_fn = getattr(client, "get_deal", None)
+    if not callable(get_deal_fn):
+        return deals
+    out: List[Dict[str, Any]] = []
+    for d in deals:
+        if has_cat(d):
+            out.append(d)
+            continue
+        try:
+            did = int(d.get("id"))
+        except (TypeError, ValueError):
+            out.append(d)
+            continue
+        full = get_deal_fn(did)
+        out.append({**d, **full} if full else d)
+    return out
 
 
 def _fetch_context(
@@ -140,10 +169,7 @@ def _fetch_context(
 
     deals = client.get_all_won_deals()
     # Seznam /deals často nevrací custom pole — doplníme GET /deals/{id} tam, kde chybí kategorie
-    deals = client.enrich_deals_with_full_details(
-        deals,
-        has_category_value=lambda d: deal_category_present(d, category_field_key),
-    )
+    deals = _enrich_won_deals_for_category(client, deals, category_field_key)
     return deals, pipelines_map, user_map, option_map
 
 
@@ -169,10 +195,10 @@ def main() -> None:
 
     with st.sidebar:
         st.caption(
-            "Z Pipedrive se berou **jen won** dealy; do měsíce se zařadí podle volby data níže."
+            "Z Pipedrive se berou **jen won** dealy; do kalendářního měsíce se řadí podle **won_time**."
         )
         st.subheader("Období")
-        # Formulář: změna roku/měsíce/režimu nespouští přepočet stránky — až tlačítko (méně problikávání).
+        # Formulář: změna roku/měsíce nespouští přepočet stránky — až tlačítko (méně problikávání).
         with st.form("commission_run", border=False):
             year = st.number_input(
                 "Rok",
@@ -190,17 +216,6 @@ def main() -> None:
                 key="commission_month",
             )
 
-            env_md = pd_cfg.deal_month_date_field
-            _md_keys = [MONTH_DATE_MODE_AUTO, MONTH_DATE_MODE_WON, MONTH_DATE_MODE_CLOSE]
-            _md_idx = _md_keys.index(env_md) if env_md in _md_keys else 0
-            month_date_mode = st.selectbox(
-                "Měsíc dealu podle data",
-                options=_md_keys,
-                format_func=lambda k: _MONTH_MODE_LABELS[k],
-                index=_md_idx,
-                key="commission_month_date_mode",
-                help="Když počty nesedí s reportem v Pipedrive, zkus **close_time** nebo ponech **auto**.",
-            )
             compute = st.form_submit_button("Spočítat provize", type="primary")
 
         st.subheader("Provizní pravidla")
@@ -245,13 +260,11 @@ def main() -> None:
                 opt_map,
                 y,
                 m,
-                month_date_mode=month_date_mode,
             )
             st.session_state.commission_rows = rows
             st.session_state.commission_meta = {
                 "year": y,
                 "month": m,
-                "month_date_mode": month_date_mode,
             }
             st.session_state.value_diagnostics = build_value_diagnostics(
                 deals,
@@ -261,16 +274,14 @@ def main() -> None:
                 opt_map,
                 pl_map,
                 rows,
-                month_date_mode=month_date_mode,
             )
-            won_m = collect_won_deals_in_month(deals, y, m, month_date_mode)
+            won_m = collect_won_deals_in_month(deals, y, m)
             st.session_state.csv_export_context = {
                 "won_month_deals": won_m,
                 "category_field_key": cat_key,
                 "option_map": opt_map,
                 "pipelines_map": pl_map,
                 "user_map": u_map,
-                "month_date_mode": month_date_mode,
             }
         except Exception as e:
             st.error(f"Chyba API nebo výpočtu: {e}")
@@ -289,11 +300,9 @@ def main() -> None:
 
     rows: List[DealCommissionRow] = st.session_state.commission_rows or []
     y, m = meta["year"], meta["month"]
-    month_date_mode = meta.get("month_date_mode") or MONTH_DATE_MODE_AUTO
     last_day = monthrange(y, m)[1]
-    mode_txt = _MONTH_MODE_LABELS.get(month_date_mode, month_date_mode)
     st.caption(
-        f"Měsíc **{y}-{m:02d}** (1.–{last_day}.), datum dealu: **{mode_txt}**. "
+        f"Měsíc **{y}-{m:02d}** (1.–{last_day}.) podle **won_time**. "
         "Nesedí-li počty s Pipedrive, otevři **Diagnostika** níže."
     )
 
@@ -365,10 +374,9 @@ def main() -> None:
         ):
             st.markdown(
                 "Započítávají se jen dealy s pravidly v sidebaru (kategorie + pipeline). "
-                "Hodnota = pole **value** z API, měsíc = volba **won_time / close_time / auto**. "
+                "Hodnota = pole **value** z API, měsíc dealu = **won_time**. "
                 "Token vidí jen dealy v rozsahu oprávnění uživatele."
             )
-            st.caption(f"Režim data: **{diag.get('month_date_mode', '')}**")
             st.markdown("##### Won dealy v měsíci — součet value po měnách")
             st.write(f"Počet: **{diag['won_deals_in_month']}**")
             tbl_won = [
@@ -440,7 +448,6 @@ def main() -> None:
     with st.expander("Export CSV", expanded=False):
         ctx = st.session_state.get("csv_export_context")
         if ctx and ctx.get("won_month_deals") is not None:
-            md_csv = ctx.get("month_date_mode") or pd_cfg.deal_month_date_field
             export_all = build_full_month_export_rows(
                 ctx["won_month_deals"],
                 rows,
@@ -448,7 +455,6 @@ def main() -> None:
                 ctx["option_map"],
                 ctx["pipelines_map"],
                 ctx["user_map"],
-                month_date_mode=md_csv,
             )
             n_all = len(export_all)
             n_yes = sum(1 for r in export_all if r.get("započteno_do_provize") == "ano")

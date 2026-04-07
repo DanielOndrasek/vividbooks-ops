@@ -9,8 +9,6 @@ from typing import List
 
 from dotenv import load_dotenv
 
-from vividbooks_ops.tools.commission.month_mode import normalize_month_date_mode
-
 # Vividbooks: výchozí API klíč custom pole „Product category“ u dealu v Pipedrive.
 # Hodnoty pole odpovídají pravidlům provizí: print, posters, interactive, vividboard.
 # Přepíše se proměnnou PIPEDRIVE_CATEGORY_FIELD_KEY / Secrets category_field_key.
@@ -68,7 +66,6 @@ class PipedriveSettings:
     api_token: str
     domain: str
     category_field_key: str
-    deal_month_date_field: str
 
     @property
     def configured(self) -> bool:
@@ -101,9 +98,6 @@ def load_settings(*, load_dotenv_file: bool = True) -> OperationsSettings:
         api_token=os.getenv("PIPEDRIVE_API_TOKEN", "").strip(),
         domain=os.getenv("PIPEDRIVE_DOMAIN", "").strip(),
         category_field_key=cat_key,
-        deal_month_date_field=normalize_month_date_mode(
-            os.getenv("PIPEDRIVE_DEAL_MONTH_DATE_FIELD")
-        ),
     )
     return OperationsSettings(pipedrive=pd)
 

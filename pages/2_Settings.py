@@ -65,9 +65,6 @@ if pd_cfg.api_token and pd_cfg.domain:
         except Exception as e:
             st.error(f"Nepodařilo se načíst dealFields: {e}")
 
-st.markdown("**PIPEDRIVE_DEAL_MONTH_DATE_FIELD** (výchozí pro výběr měsíce dealu)")
-st.code(pd_cfg.deal_month_date_field, language=None)
-
 st.divider()
 
 st.subheader("Další integrace")

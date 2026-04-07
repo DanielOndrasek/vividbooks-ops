@@ -10,12 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from vividbooks_ops.tools.commission.month_mode import (
-    MONTH_DATE_MODE_AUTO,
-    MONTH_DATE_MODE_CLOSE,
-    MONTH_DATE_MODE_WON,
-    normalize_month_date_mode,
-)
 from vividbooks_ops.tools.commission.rules import (
     CATEGORIES_SHARED_INTERACTIVE_PIPELINES,
     COMMISSION_RULES,
@@ -34,27 +28,16 @@ def parse_won_date(won_time: Optional[str]) -> Optional[date]:
         return None
 
 
-def deal_raw_timestamp_for_month(deal: Dict[str, Any], mode: str) -> str:
-    """Řetězec data/času z API pro zařazení do měsíce (prvních 10 znaků = datum)."""
+def deal_won_time_raw(deal: Dict[str, Any]) -> str:
+    """Řetězec won_time z API (zařazení do měsíce je vždy podle něj)."""
     wt = deal.get("won_time")
-    ct = deal.get("close_time")
-    if mode == MONTH_DATE_MODE_CLOSE:
-        s = ct
-    elif mode == MONTH_DATE_MODE_WON:
-        s = wt
-    else:
-        if wt is not None and str(wt).strip():
-            s = wt
-        else:
-            s = ct
-    if s is None:
+    if wt is None:
         return ""
-    return str(s).strip()
+    return str(wt).strip()
 
 
-def deal_month_date(deal: Dict[str, Any], mode: str) -> Optional[date]:
-    raw = deal_raw_timestamp_for_month(deal, mode)
-    return parse_won_date(raw) if raw else None
+def deal_month_date(deal: Dict[str, Any]) -> Optional[date]:
+    return parse_won_date(deal.get("won_time"))
 
 
 def extract_user_id(deal: Dict[str, Any]) -> Optional[int]:
@@ -400,14 +383,13 @@ def compute_commissions_for_month(
     option_id_to_label: Dict[str, str],
     year: int,
     month: int,
-    month_date_mode: str = MONTH_DATE_MODE_AUTO,
 ) -> List[DealCommissionRow]:
     rows: List[DealCommissionRow] = []
     for deal in deals:
-        won_d = deal_month_date(deal, month_date_mode)
+        won_d = deal_month_date(deal)
         if won_d is None or won_d.year != year or won_d.month != month:
             continue
-        anchor_raw = deal_raw_timestamp_for_month(deal, month_date_mode)
+        anchor_raw = deal_won_time_raw(deal)
 
         raw_cat = deal_product_category_raw(deal, category_field_key)
         if isinstance(raw_cat, list):
@@ -478,11 +460,10 @@ def collect_won_deals_in_month(
     deals: List[Dict[str, Any]],
     year: int,
     month: int,
-    month_date_mode: str = MONTH_DATE_MODE_AUTO,
 ) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for deal in deals:
-        won_d = deal_month_date(deal, month_date_mode)
+        won_d = deal_month_date(deal)
         if won_d is None or won_d.year != year or won_d.month != month:
             continue
         out.append(deal)
@@ -572,14 +553,13 @@ def build_value_diagnostics(
     option_id_to_label: Dict[str, str],
     pipelines_map: Dict[int, str],
     rows: List[DealCommissionRow],
-    month_date_mode: str = MONTH_DATE_MODE_AUTO,
     max_excluded_rows: int = 100,
 ) -> Dict[str, Any]:
     """
     Vysvětlení rozdílů součtu: všechny won dealy v měsíci vs. jen započtené,
     součty po měnách (value je vždy v měně dealu).
     """
-    won_month = collect_won_deals_in_month(deals, year, month, month_date_mode)
+    won_month = collect_won_deals_in_month(deals, year, month)
     by_ccy_won = sum_values_by_currency(won_month)
     commissioned_ids = {r.deal_id for r in rows if r.deal_id}
     excluded: List[Dict[str, Any]] = []
@@ -664,7 +644,6 @@ def build_value_diagnostics(
     return {
         "won_deals_in_month": len(won_month),
         "api_won_deals_loaded": len(deals),
-        "month_date_mode": month_date_mode,
         "sum_by_currency_won_month": by_ccy_won,
         "commissioned_deals": len(rows),
         "sum_by_currency_commissioned": by_ccy_commissioned,
@@ -772,10 +751,9 @@ def build_full_month_export_rows(
     option_id_to_label: Dict[str, str],
     pipelines_map: Dict[int, str],
     user_id_to_name: Dict[int, str],
-    month_date_mode: str = MONTH_DATE_MODE_AUTO,
 ) -> List[Dict[str, Any]]:
     """
-    Jeden řádek za každý won deal v měsíci (datum podle zvoleného režimu). Započtené mají provizi a segment,
+    Jeden řádek za každý won deal v měsíci (měsíc = kalendářní měsíc won_time). Započtené mají provizi a segment,
     ostatní mají sloupec důvod_vyřazení (proč nejsou v provizích).
     """
     by_id = {r.deal_id: r for r in commissioned if r.deal_id}
@@ -794,8 +772,8 @@ def build_full_month_export_rows(
         except (TypeError, ValueError):
             did = 0
 
-        anchor_raw = deal_raw_timestamp_for_month(deal, month_date_mode)
-        won_d = deal_month_date(deal, month_date_mode)
+        anchor_raw = deal_won_time_raw(deal)
+        won_d = deal_month_date(deal)
         won_date_str = won_d.isoformat() if won_d else ""
 
         row: Dict[str, Any] = {
@@ -833,9 +811,6 @@ def build_full_month_export_rows(
 
 
 __all__ = [
-    "MONTH_DATE_MODE_AUTO",
-    "MONTH_DATE_MODE_CLOSE",
-    "MONTH_DATE_MODE_WON",
     "DealCommissionRow",
     "aggregate_by_owner",
     "build_category_option_map",
@@ -847,6 +822,5 @@ __all__ = [
     "deal_product_category_raw",
     "dataframe_commission_by_category_and_pipeline_bucket",
     "dataframe_commission_by_owner_and_category",
-    "normalize_month_date_mode",
     "rows_to_dataframe_rows",
 ]
