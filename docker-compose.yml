@@ -1,0 +1,10 @@
+# Vividbooks Operations Space — Streamlit hub (Home.py + pages/).
+# Zkopíruj .env z .env.example a spusť: docker compose up -d --build
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    restart: unless-stopped

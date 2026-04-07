@@ -1,0 +1,1 @@
+"""Externí integrace (Pipedrive, …)."""

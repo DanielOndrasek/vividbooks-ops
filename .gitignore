@@ -1,0 +1,10 @@
+.env
+.venv/
+.streamlit/secrets.toml
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+
+# Samostatný Next.js projekt (vlastní git / Vercel) — nepatří do vividbooks-ops
+invoice-portal/
