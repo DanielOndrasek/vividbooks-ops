@@ -4,11 +4,17 @@ import pandas as pd
 import streamlit as st
 
 from vividbooks_ops.integrations.pipedrive.client import PipedriveClient
-from vividbooks_ops.settings import load_settings, mask_secret
+from vividbooks_ops.settings import get_doklady_web_settings, load_settings, mask_secret
 
 st.set_page_config(page_title="Nastavení integrací", layout="wide")
 
 st.title("Nastavení integrací")
+_web = get_doklady_web_settings()
+_ops = _web.app_url.rstrip("/")
+st.info(
+    f"**Kompletní nastavení všech integrací** (Gmail, Drive, Claude, Pipedrive, cron) je ve webové "
+    f"aplikaci: [{_ops}/settings]({_ops}/settings). Tato stránka zůstává pro rychlý přehled Pipedrive ze Streamlitu."
+)
 st.caption("Hodnoty se berou z prostředí (`.env` / Docker). Citlivé údaje jsou zkrácené.")
 
 settings = load_settings()

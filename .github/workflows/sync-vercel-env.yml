@@ -46,4 +46,8 @@ jobs:
           ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
           AI_CONFIDENCE_THRESHOLD: ${{ secrets.AI_CONFIDENCE_THRESHOLD }}
           AI_BATCH_LIMIT: ${{ secrets.AI_BATCH_LIMIT }}
+          PIPEDRIVE_API_TOKEN: ${{ secrets.PIPEDRIVE_API_TOKEN }}
+          PIPEDRIVE_DOMAIN: ${{ secrets.PIPEDRIVE_DOMAIN }}
+          PIPEDRIVE_CATEGORY_FIELD_KEY: ${{ secrets.PIPEDRIVE_CATEGORY_FIELD_KEY }}
+          OPS_ADMIN_CONTACT: ${{ secrets.OPS_ADMIN_CONTACT }}
         run: bash .github/scripts/sync-vercel-env.sh

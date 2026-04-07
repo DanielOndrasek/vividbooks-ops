@@ -32,7 +32,8 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Přihlášen jako <strong>{session?.user?.email}</strong>, role{" "}
+          Jedna aplikace pro doklady z Gmailu, schvalování faktur, platby na Drive a výpočet provizí
+          z Pipedrive. Přihlášen jako <strong>{session?.user?.email}</strong>, role{" "}
           <code className="bg-muted rounded px-1 py-0.5 text-xs">
             {session?.user?.role ?? "—"}
           </code>

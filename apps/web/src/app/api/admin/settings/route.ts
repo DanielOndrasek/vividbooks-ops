@@ -2,17 +2,8 @@ import { NextResponse } from "next/server";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
 import { assertGmailConfigured } from "@/lib/gmail-config";
+import { getPipedriveEnv, maskSecret } from "@/lib/integrations/env";
 import { isDriveConfigured } from "@/services/drive";
-
-function mask(s: string | undefined, keep = 4): string {
-  if (!s?.trim()) {
-    return "(prázdné)";
-  }
-  if (s.length <= keep * 2) {
-    return "•••";
-  }
-  return `${s.slice(0, keep)}…${s.slice(-keep)}`;
-}
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -33,19 +24,27 @@ export async function GET() {
   }
 
   const driveOk = isDriveConfigured();
+  const pd = getPipedriveEnv();
 
   return NextResponse.json({
+    pipedrive: {
+      configured: pd.configured,
+      missing: pd.missing,
+      domain: pd.domain || null,
+      categoryFieldKey: pd.categoryFieldKey || null,
+      apiToken: maskSecret(pd.apiToken),
+    },
     gmail: {
       configured: gmailOk,
       filterLabel: process.env.GMAIL_FILTER_LABEL || "INBOX",
       processedLabel: process.env.GMAIL_PROCESSED_LABEL || "Zpracováno",
-      clientId: mask(process.env.GMAIL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID),
+      clientId: maskSecret(process.env.GMAIL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID),
       refreshTokenSet: Boolean(process.env.GMAIL_REFRESH_TOKEN?.trim()),
     },
     drive: {
       configured: driveOk,
-      invoicesFolderId: mask(process.env.GOOGLE_DRIVE_INVOICES_FOLDER_ID),
-      receiptsFolderId: mask(process.env.GOOGLE_DRIVE_RECEIPTS_FOLDER_ID),
+      invoicesFolderId: maskSecret(process.env.GOOGLE_DRIVE_INVOICES_FOLDER_ID),
+      receiptsFolderId: maskSecret(process.env.GOOGLE_DRIVE_RECEIPTS_FOLDER_ID),
       serviceAccountEmail: (() => {
         try {
           const raw = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON?.trim();

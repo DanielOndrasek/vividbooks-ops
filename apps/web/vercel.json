@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/jobs/poll-email",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/jobs/process-documents",
-      "schedule": "*/20 * * * *"
+      "schedule": "30 6 * * *"
     }
   ]
 }

@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from vividbooks_ops.integrations.pipedrive.client import PipedriveClient
-from vividbooks_ops.settings import load_settings
+from vividbooks_ops.settings import get_doklady_web_settings, load_settings
 from vividbooks_ops.tools.commission.logic import (
     DealCommissionRow,
     aggregate_by_owner,
@@ -176,6 +176,11 @@ def _fetch_context(
 def main() -> None:
     st.set_page_config(page_title="Provize Pipedrive", layout="wide")
     st.title("Měsíční provize z Pipedrive")
+    _web = get_doklady_web_settings()
+    _ops = _web.app_url.rstrip("/")
+    st.info(
+        f"Stejný výpočet je i ve webové aplikaci: [{_ops}/commission]({_ops}/commission)."
+    )
 
     settings = load_settings()
     pd_cfg = settings.pipedrive
