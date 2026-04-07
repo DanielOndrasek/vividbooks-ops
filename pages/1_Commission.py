@@ -141,62 +141,8 @@ def _fetch_context(
     return deals, pipelines_map, user_map, option_map
 
 
-def _inject_sidebar_autohide_scrollbar_css() -> None:
-    """Skryje posuvník levého panelu; zobrazí tenký při hoveru (scroll kolečkem funguje vždy)."""
-    st.markdown(
-        """
-<style>
-/* Levý panel Streamlit: posuvník není trvale viditelný */
-section[data-testid="stSidebar"],
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] {
-    scrollbar-width: none;
-    scrollbar-color: transparent transparent;
-}
-section[data-testid="stSidebar"]::-webkit-scrollbar,
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar,
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]::-webkit-scrollbar,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"]::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-}
-section[data-testid="stSidebar"]:hover,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarContent"],
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarUserContent"],
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarNav"] {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(120, 120, 130, 0.45) transparent;
-}
-section[data-testid="stSidebar"]:hover::-webkit-scrollbar,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarContent"]::-webkit-scrollbar,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarUserContent"]::-webkit-scrollbar,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarNav"]::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-section[data-testid="stSidebar"]:hover::-webkit-scrollbar-thumb,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarContent"]::-webkit-scrollbar-thumb,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarUserContent"]::-webkit-scrollbar-thumb,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarNav"]::-webkit-scrollbar-thumb {
-    background: rgba(120, 120, 130, 0.35);
-    border-radius: 4px;
-}
-section[data-testid="stSidebar"]:hover::-webkit-scrollbar-track,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarContent"]::-webkit-scrollbar-track,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarUserContent"]::-webkit-scrollbar-track,
-section[data-testid="stSidebar"]:hover [data-testid="stSidebarNav"]::-webkit-scrollbar-track {
-    background: transparent;
-}
-</style>
-""",
-        unsafe_allow_html=True,
-    )
-
-
 def main() -> None:
     st.set_page_config(page_title="Provize Pipedrive", layout="wide")
-    _inject_sidebar_autohide_scrollbar_css()
     st.title("Měsíční provize z Pipedrive")
 
     settings = load_settings()
@@ -220,24 +166,36 @@ def main() -> None:
             "Z Pipedrive se berou **jen won** dealy; do měsíce se zařadí podle volby data níže."
         )
         st.subheader("Období")
-        year = st.number_input("Rok", min_value=2000, max_value=2100, value=py, step=1)
-        month = st.selectbox(
-            "Měsíc",
-            options=list(range(1, 13)),
-            format_func=lambda m: f"{m:02d}",
-            index=pm - 1,
-        )
+        # Formulář: změna roku/měsíce/režimu nespouští přepočet stránky — až tlačítko (méně problikávání).
+        with st.form("commission_run", border=False):
+            year = st.number_input(
+                "Rok",
+                min_value=2000,
+                max_value=2100,
+                value=py,
+                step=1,
+                key="commission_year",
+            )
+            month = st.selectbox(
+                "Měsíc",
+                options=list(range(1, 13)),
+                format_func=lambda m: f"{m:02d}",
+                index=pm - 1,
+                key="commission_month",
+            )
 
-        env_md = pd_cfg.deal_month_date_field
-        _md_keys = [MONTH_DATE_MODE_AUTO, MONTH_DATE_MODE_WON, MONTH_DATE_MODE_CLOSE]
-        _md_idx = _md_keys.index(env_md) if env_md in _md_keys else 0
-        month_date_mode = st.selectbox(
-            "Měsíc dealu podle data",
-            options=_md_keys,
-            format_func=lambda k: _MONTH_MODE_LABELS[k],
-            index=_md_idx,
-            help="Když počty nesedí s reportem v Pipedrive, zkus **close_time** nebo ponech **auto**.",
-        )
+            env_md = pd_cfg.deal_month_date_field
+            _md_keys = [MONTH_DATE_MODE_AUTO, MONTH_DATE_MODE_WON, MONTH_DATE_MODE_CLOSE]
+            _md_idx = _md_keys.index(env_md) if env_md in _md_keys else 0
+            month_date_mode = st.selectbox(
+                "Měsíc dealu podle data",
+                options=_md_keys,
+                format_func=lambda k: _MONTH_MODE_LABELS[k],
+                index=_md_idx,
+                key="commission_month_date_mode",
+                help="Když počty nesedí s reportem v Pipedrive, zkus **close_time** nebo ponech **auto**.",
+            )
+            compute = st.form_submit_button("Spočítat provize", type="primary")
 
         st.subheader("Provizní pravidla")
         for i, rule in enumerate(COMMISSION_RULES, start=1):
@@ -250,8 +208,6 @@ def main() -> None:
             else:
                 pl = rule["pipeline"] or "(jakýkoliv pipeline)"
                 st.caption(f"{i}. **{cats}** — {pl} — **{rule['rate'] * 100:.0f} %**")
-
-        compute = st.button("Spočítat provize", type="primary")
 
     missing = pd_cfg.missing_env_names()
 
@@ -314,7 +270,10 @@ def main() -> None:
 
     meta = st.session_state.commission_meta
     if meta is None:
-        st.info("Vyber období v postranním panelu a klikni na **Spočítat provize**.")
+        st.info(
+            "V levém panelu nastav období a klikni **Spočítat provize** — při úpravě roku nebo měsíce "
+            "se stránka záměrně nepřepočítává při každém kliknutí (plynulejší UI)."
+        )
         return
 
     rows: List[DealCommissionRow] = st.session_state.commission_rows or []

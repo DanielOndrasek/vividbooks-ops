@@ -3,3 +3,7 @@ headless = true
 
 [browser]
 gatherUsageStats = false
+
+# Rychlejší přepočty, často méně viditelného „blikání“ při interakci s widgety
+[runner]
+fastReruns = true
