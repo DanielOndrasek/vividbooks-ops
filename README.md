@@ -16,3 +16,5 @@ npm run dev
 Z kořene repozitáře lze použít zkratky: `npm run dev`, `npm run build` (delegují do `apps/web`).
 
 Podrobnosti nasazení a GCP (Gmail API, Drive, service account) jsou v [apps/web/README.md](apps/web/README.md).
+
+**Tajemství z GitHubu do Vercelu:** viz [docs/github-secrets.md](docs/github-secrets.md) a workflow *Sync secrets to Vercel* (Actions).
