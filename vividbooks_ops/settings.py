@@ -3,12 +3,57 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import List
 
 from dotenv import load_dotenv
 
 from vividbooks_ops.tools.commission.month_mode import normalize_month_date_mode
+
+
+def _apply_streamlit_secrets_to_environ() -> None:
+    """
+    Streamlit Community Cloud: Secrets jsou v st.secrets (TOML), ne v os.environ.
+    Multipage app nespouští vždy Home.py — proto to musí běžet při každém load_settings().
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return
+    try:
+        sec = st.secrets
+    except Exception:
+        return
+    try:
+        top_keys = list(sec.keys())
+    except Exception:
+        return
+    for key in top_keys:
+        try:
+            val = sec[key]
+        except Exception:
+            continue
+        if isinstance(val, Mapping) and not isinstance(val, str | bytes):
+            prefix = str(key).upper()
+            for nk in val:
+                try:
+                    nv = val[nk]
+                except Exception:
+                    continue
+                if nv is None:
+                    continue
+                s = str(nv).strip()
+                if not s:
+                    continue
+                env_key = f"{prefix}_{str(nk).upper()}"
+                os.environ.setdefault(env_key, s)
+        else:
+            if val is None:
+                continue
+            s = str(val).strip()
+            if s:
+                os.environ.setdefault(str(key), s)
 
 
 @dataclass(frozen=True)
@@ -39,6 +84,7 @@ class OperationsSettings:
 
 
 def load_settings(*, load_dotenv_file: bool = True) -> OperationsSettings:
+    _apply_streamlit_secrets_to_environ()
     if load_dotenv_file:
         load_dotenv()
     pd = PipedriveSettings(
