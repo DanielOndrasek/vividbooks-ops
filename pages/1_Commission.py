@@ -386,7 +386,10 @@ def main() -> None:
 
     diag = st.session_state.get("value_diagnostics")
     if diag:
-        with st.expander("Diagnostika a neshody s Pipedrive", expanded=False):
+        with st.expander(
+            "Diagnostika a neshody s Pipedrive",
+            expanded=bool((diag.get("excluded_count") or 0) > 0),
+        ):
             st.markdown(
                 "Započítávají se jen dealy s pravidly v sidebaru (kategorie + pipeline). "
                 "Hodnota = pole **value** z API, měsíc = volba **won_time / close_time / auto**. "

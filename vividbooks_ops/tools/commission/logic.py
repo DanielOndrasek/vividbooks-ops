@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -113,6 +114,22 @@ def deal_currency(deal: Dict[str, Any]) -> str:
     return str(c).strip().upper()
 
 
+def _register_option_keys(out: Dict[str, str], oid: Any, label: str) -> None:
+    """Pipedrive vrací id jako int/float/str — mapujeme všechny běžné tvary na stejný label."""
+    if oid is None:
+        return
+    s = str(oid).strip()
+    if not s:
+        return
+    out[s] = label
+    try:
+        f = float(s)
+        if f == int(f):
+            out[str(int(f))] = label
+    except (TypeError, ValueError, OverflowError):
+        pass
+
+
 def build_category_option_map(
     deal_fields: List[Dict[str, Any]],
     category_field_key: str,
@@ -126,9 +143,35 @@ def build_category_option_map(
             oid = opt.get("id")
             label = opt.get("label")
             if oid is not None and label is not None:
-                out[str(oid)] = str(label)
+                _register_option_keys(out, oid, str(label))
         return out
     return {}
+
+
+def _resolve_label_from_option_map(
+    raw: Any,
+    option_id_to_label: Dict[str, str],
+) -> Optional[str]:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        raw = raw[0]
+    key = str(raw).strip()
+    if not key:
+        return None
+    if key in option_id_to_label:
+        return option_id_to_label[key]
+    try:
+        f = float(key)
+        if f == int(f):
+            k2 = str(int(f))
+            if k2 in option_id_to_label:
+                return option_id_to_label[k2]
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return None
 
 
 def normalize_category_label(
@@ -142,9 +185,36 @@ def normalize_category_label(
             return None
         raw = raw[0]
     key = str(raw).strip()
-    label = option_id_to_label.get(key)
+    label = _resolve_label_from_option_map(raw, option_id_to_label)
     text = label if label is not None else key
-    return text.lower().strip()
+    out = text.lower().strip()
+    return out if out else None
+
+
+def category_label_matches_rule_categories(
+    category_label: str,
+    rule_categories: List[str],
+) -> bool:
+    """
+    Pipedrive label často není přesně „interactive“, ale „Interactive“ nebo „interactive + vividboard“.
+    Pravidla používají krátké klíče — povolíme shodu celého řetězce, tokenu nebo zkomprimovaného textu.
+    """
+    cat = (category_label or "").lower().strip()
+    if not cat:
+        return False
+    cats_norm = [c.lower().strip() for c in rule_categories if c]
+    if cat in cats_norm:
+        return True
+    cat_c = cat.replace(" ", "").replace("-", "").replace("_", "")
+    for c in cats_norm:
+        if cat_c == c.replace(" ", "").replace("-", "").replace("_", ""):
+            return True
+        if cat.startswith(c + " ") or cat.startswith(c + "-") or cat.startswith(c + "/"):
+            return True
+    parts = [p for p in re.split(r"[\s,/;|+]+", cat) if p]
+    if any(p in cats_norm for p in parts):
+        return True
+    return False
 
 
 def normalize_pipeline_name(name: str) -> str:
@@ -174,6 +244,9 @@ def interactive_pipeline_kind(pipeline_name: str) -> Optional[str]:
     # „ - upsell“ odfiltruje náhodné řetězce jako „pre-upsell“ bez mezer kolem slova v názvu PD
     if " - upsell" in n or n.endswith(" upsell"):
         return "upsell"
+    # „CZ Sales Upsell [CZ1]“ — mezera před „upsell“, ne nutně „ - upsell“
+    if " upsell" in n:
+        return "upsell"
     return None
 
 
@@ -196,8 +269,8 @@ def find_commission_rule(
     pipeline_name: str,
 ) -> Optional[Dict[str, Any]]:
     for rule in COMMISSION_RULES:
-        cats = [c.lower().strip() for c in rule["categories"]]
-        if category_label not in cats:
+        cats = list(rule["categories"])
+        if not category_label_matches_rule_categories(category_label, cats):
             continue
         ikind = rule.get("interactive_kind")
         if ikind:
@@ -230,13 +303,33 @@ class DealCommissionRow:
     won_time_raw: str
 
 
+def _segment_base_category(label: str) -> str:
+    """Z normalizovaného labelu (může být delší než klíč v pravidlech) odvodí základ pro segmentaci."""
+    cl = (label or "").lower().strip()
+    if not cl:
+        return ""
+    if cl == "print" or cl.startswith("print ") or cl.startswith("print-"):
+        return "print"
+    if cl == "posters" or cl.startswith("posters ") or cl.startswith("posters-"):
+        return "posters"
+    parts = [p for p in re.split(r"[\s,/;|+]+", cl) if p]
+    for token in parts:
+        if token in CATEGORIES_SHARED_INTERACTIVE_PIPELINES:
+            return token
+    for c in CATEGORIES_SHARED_INTERACTIVE_PIPELINES:
+        if cl.startswith(c + " ") or cl.startswith(c + "-") or cl == c:
+            return c
+    return cl
+
+
 def row_reporting_segment(r: DealCommissionRow) -> str:
     """Skupina pro přehledy v UI / CSV."""
-    if r.category_label == "print":
+    base = _segment_base_category(r.category_label)
+    if base == "print":
         return "print"
-    if r.category_label == "posters":
+    if base == "posters":
         return "posters"
-    if r.category_label in CATEGORIES_SHARED_INTERACTIVE_PIPELINES:
+    if base in CATEGORIES_SHARED_INTERACTIVE_PIPELINES:
         kind = interactive_pipeline_kind(r.pipeline_name)
         if kind == "akvizice":
             return "interactive_akvizice"
