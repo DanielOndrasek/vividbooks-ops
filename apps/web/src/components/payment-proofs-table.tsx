@@ -29,6 +29,37 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  async function retryDriveUpload(proofId: string) {
+    setBusyId(proofId);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/payment-proofs/${proofId}`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        driveUrl?: string | null;
+      };
+      if (!res.ok) {
+        setMessage(data.error ?? `Chyba ${res.status}`);
+        return;
+      }
+      if (data.ok) {
+        setMessage(
+          data.driveUrl
+            ? "Soubor je na Google Drive (složka dokladů o platbě)."
+            : "Hotovo.",
+        );
+        router.refresh();
+        return;
+      }
+      setMessage(data.error ?? "Neznámá chyba.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function deleteProof(proofId: string) {
     if (
       !window.confirm(
@@ -122,7 +153,19 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
                     )}
                   </td>
                   {canAct && (
-                    <td className="p-3">
+                    <td className="space-y-1 p-3">
+                      {!p.driveUrl && (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="secondary"
+                          disabled={b}
+                          onClick={() => void retryDriveUpload(p.id)}
+                          className="mr-1"
+                        >
+                          {b ? "…" : "Nahrát na Drive"}
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         size="xs"

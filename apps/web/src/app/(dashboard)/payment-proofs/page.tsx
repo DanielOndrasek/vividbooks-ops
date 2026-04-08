@@ -39,10 +39,16 @@ export default async function PaymentProofsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Doklady o platbě</h1>
         <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-          Doklad o platbě se po rozpoznání (AI) nebo po potvrzení „Platba v pořádku“ sám nahraje na
-          Google Drive — není potřeba nic spouštět ručně. Po úspěšném nahrání se z databáze odstraní
-          objemná data (text z PDF, odpověď AI, dočasný soubor); v aplikaci zůstane jen evidence a
-          odkaz na Drive.
+          Doklad o platbě se po rozpoznání (AI), po převodu z faktury nebo po potvrzení „Platba v
+          pořádku“ nahraje na Google Shared Drive do kořenové složky pro platby (env{" "}
+          <code className="bg-muted rounded px-1 text-xs">GOOGLE_DRIVE_RECEIPTS_FOLDER_ID</code>), ne
+          do složky faktur. Uvnitř jsou podsložky podle roku a měsíce nahrání. Po úspěchu uvidíte ve
+          sloupci „Uloženo“ datum a odkaz na Drive.
+        </p>
+        <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed">
+          Prázdné „Uloženo“ a odkaz jen na náhled znamená, že se na disk ještě nedostalo nebo první
+          pokus selhal (Drive nebyl nastaven, Gmail token, chybějící soubor na serveru). U řádku lze
+          zkusit tlačítko Nahrát na Drive (role administrátor / schvalovatel).
         </p>
         {canAct && (
           <p className="text-muted-foreground mt-2 text-xs">
