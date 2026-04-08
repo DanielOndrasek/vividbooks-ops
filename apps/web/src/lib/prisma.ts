@@ -39,8 +39,26 @@ function createPrismaClient() {
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function getPrisma(): PrismaClient {
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
+  const client = createPrismaClient();
+  globalForPrisma.prisma = client;
+  return client;
 }
+
+/**
+ * Lenivá inicializace: import `@/lib/prisma` nesahá na DB, dokud se nevolá např. `prisma.invoice`.
+ * Umožní načíst lehké routy i když je modul v balíčku načten společně s auth (OAuth callback stejně DB potřebuje).
+ */
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getPrisma();
+    const value = Reflect.get(client, prop, receiver);
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
+  },
+});
