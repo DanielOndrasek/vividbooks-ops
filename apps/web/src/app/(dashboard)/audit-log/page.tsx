@@ -17,9 +17,9 @@ export default async function AuditLogPage() {
       <p className="text-muted-foreground text-sm">
         Posledních 150 událostí v systému.
       </p>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="table-panel">
         <table className="w-full text-left text-sm">
-          <thead className="bg-muted/50 border-b">
+          <thead>
             <tr>
               <th className="p-3 font-medium">Čas</th>
               <th className="p-3 font-medium">Akce</th>
@@ -30,7 +30,7 @@ export default async function AuditLogPage() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="border-b last:border-0">
+              <tr key={r.id}>
                 <td className="text-muted-foreground whitespace-nowrap p-3 text-xs">
                   {r.createdAt.toLocaleString("cs-CZ")}
                 </td>

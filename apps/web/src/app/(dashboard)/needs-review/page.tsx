@@ -49,6 +49,7 @@ export default async function NeedsReviewPage() {
       canConfirmPayment: caps.canConfirmPayment,
       canDismiss: caps.canDismiss,
       canRejectInvoice: caps.canRejectInvoice,
+      canDeleteDocument: canAct && d.status !== "APPROVED",
     };
   });
 

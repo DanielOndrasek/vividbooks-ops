@@ -22,8 +22,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       const userId = user?.id ?? token.sub;
       if (userId) {
-        const row = await prisma.user.findUnique({ where: { id: userId } });
-        token.role = row?.role ?? "VIEWER";
+        try {
+          const row = await prisma.user.findUnique({ where: { id: userId } });
+          token.role = row?.role ?? "VIEWER";
+        } catch (e) {
+          console.error("[auth] jwt: databáze nedostupná, role VIEWER", e);
+          token.role = "VIEWER";
+        }
       }
       return token;
     },

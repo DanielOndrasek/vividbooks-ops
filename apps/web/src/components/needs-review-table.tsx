@@ -21,6 +21,7 @@ export type NeedsReviewRowDto = {
   canConfirmPayment: boolean;
   canDismiss: boolean;
   canRejectInvoice: boolean;
+  canDeleteDocument: boolean;
 };
 
 type Props = {
@@ -58,6 +59,32 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
     }
   }
 
+  async function deleteDocument(documentId: string) {
+    if (
+      !window.confirm(
+        "Trvale smazat tento doklad včetně související faktury nebo evidence platby v databázi? Tuto akci nelze vrátit. Soubory na Google Drive se tím nesmažou.",
+      )
+    ) {
+      return;
+    }
+    setBusyDoc(documentId);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error || `Chyba ${res.status}`);
+        return;
+      }
+      setMessage("Doklad byl smazán.");
+      router.refresh();
+    } finally {
+      setBusyDoc(null);
+    }
+  }
+
   async function rejectInvoice(invoiceId: string) {
     const reason = window.prompt("Důvod zamítnutí (volitelné):") ?? "";
     setBusyDoc(`inv:${invoiceId}`);
@@ -85,9 +112,9 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
-      <div className="overflow-x-auto rounded-md border">
+      <div className="table-panel">
         <table className="w-full text-left text-sm">
-          <thead className="bg-muted/50 border-b">
+          <thead>
             <tr>
               <th className="p-3 font-medium">Přijato</th>
               <th className="p-3 font-medium">Typ</th>
@@ -210,11 +237,23 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
                             Vyřadit z fronty
                           </Button>
                         )}
+                        {d.canDeleteDocument && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            disabled={b}
+                            onClick={() => void deleteDocument(d.documentId)}
+                          >
+                            Smazat doklad
+                          </Button>
+                        )}
                         {!d.canConfirmInvoice &&
                           !d.canConfirmPayment &&
                           !d.canRequeueAi &&
                           !d.canRejectInvoice &&
-                          !d.canDismiss && (
+                          !d.canDismiss &&
+                          !d.canDeleteDocument && (
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
                       </div>

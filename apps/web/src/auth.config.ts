@@ -17,6 +17,8 @@ export default {
   },
   pages: {
     signIn: "/login",
+    // Výchozí /api/auth/error je anglicky a málo čitelná — stejná URL jako přihlášení.
+    error: "/login",
   },
   callbacks: {
     async signIn({ user }) {

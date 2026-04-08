@@ -65,6 +65,7 @@ export default async function DocumentsPage({ searchParams }: Props) {
       invoice: r.invoice,
       paymentProof: r.paymentProof,
     }),
+    canDeleteDocument: canRunJobs && r.status !== "APPROVED",
   }));
 
   return (

@@ -299,9 +299,9 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
-      <div className="overflow-x-auto rounded-md border">
+      <div className="table-panel">
         <table className="w-full text-left text-sm">
-          <thead className="bg-muted/50 border-b">
+          <thead>
             <tr>
               {canAct && (
                 <th className="w-10 p-3">

@@ -205,9 +205,9 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
 
           <div>
             <h2 className="mb-2 font-medium">Souhrn po obchodnících</h2>
-            <div className="overflow-x-auto rounded-md border">
+            <div className="table-panel">
               <table className="w-full text-left text-sm">
-                <thead className="bg-muted/50 border-b">
+                <thead>
                   <tr>
                     <th className="p-2">Obchodník</th>
                     <th className="p-2">Dealy</th>
@@ -217,7 +217,7 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
                 </thead>
                 <tbody>
                   {aggregate.map((r) => (
-                    <tr key={String(r.obchodník)} className="border-b last:border-0">
+                    <tr key={String(r.obchodník)}>
                       <td className="p-2">{String(r.obchodník)}</td>
                       <td className="p-2">{String(r.počet_dealů)}</td>
                       <td className="p-2">{fmtMoney(Number(r.hodnota_dealů))}</td>

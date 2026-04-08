@@ -16,6 +16,7 @@ export type DocumentTableRow = {
   needsManualReview: boolean;
   invoiceId: string | null;
   canRequeueAi: boolean;
+  canDeleteDocument: boolean;
 };
 
 type Props = {
@@ -78,6 +79,39 @@ export function DocumentsInteractiveTable({ rows, canRunJobs }: Props) {
     return list;
   }, [selected, rows]);
 
+  async function deleteDocument(documentId: string) {
+    if (
+      !window.confirm(
+        "Trvale smazat tento doklad včetně související faktury nebo evidence platby v databázi? Tuto akci nelze vrátit. Soubory na Google Drive se tím nesmažou.",
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error ?? `Chyba ${res.status}`);
+        return;
+      }
+      setMessage("Doklad byl smazán.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+      router.refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitRequeue() {
     if (selectedEligible.length === 0) {
       return;
@@ -135,9 +169,9 @@ export function DocumentsInteractiveTable({ rows, canRunJobs }: Props) {
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
-      <div className="overflow-x-auto rounded-md border">
+      <div className="table-panel">
         <table className="w-full text-left text-sm">
-          <thead className="bg-muted/50 border-b">
+          <thead>
             <tr>
               {canRunJobs && (
                 <th className="w-10 p-3">
@@ -159,6 +193,7 @@ export function DocumentsInteractiveTable({ rows, canRunJobs }: Props) {
               <th className="p-3 font-medium">Stav</th>
               <th className="p-3 font-medium">Kontrola</th>
               <th className="p-3 font-medium">Odkaz</th>
+              {canRunJobs && <th className="p-3 font-medium w-28">Záznam</th>}
             </tr>
           </thead>
           <tbody>
@@ -220,6 +255,25 @@ export function DocumentsInteractiveTable({ rows, canRunJobs }: Props) {
                     </a>
                   )}
                 </td>
+                {canRunJobs && (
+                  <td className="p-3">
+                    {r.canDeleteDocument ? (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="destructive"
+                        disabled={loading}
+                        onClick={() => void deleteDocument(r.id)}
+                      >
+                        Smazat
+                      </Button>
+                    ) : (
+                      <span className="text-muted-foreground text-xs" title="Schválené nelze smazat">
+                        —
+                      </span>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
