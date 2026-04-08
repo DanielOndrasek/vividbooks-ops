@@ -21,11 +21,6 @@ const STATUSES: DocumentStatus[] = [
   "PARSED",
 ];
 
-function formatConfidence(value: unknown): string | null {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n.toFixed(2) : null;
-}
-
 type Props = {
   searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
 };
@@ -109,9 +104,9 @@ export default async function InvoicesPage({ searchParams }: Props) {
       dueDateLabel: inv.dueDate
         ? inv.dueDate.toLocaleDateString("cs-CZ")
         : null,
+      documentType: inv.document.documentType,
       documentStatus: st,
-      originalFilename: inv.document.originalFilename,
-      extractionConfidenceLabel: formatConfidence(inv.extractionConfidence),
+      needsManualReview: inv.document.needsManualReview,
       detailHref: `/invoices/${inv.id}${baseQs ? `?${baseQs}` : ""}`,
       canApprove,
       canConvertToPayment,
@@ -124,9 +119,11 @@ export default async function InvoicesPage({ searchParams }: Props) {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Faktury ke schválení</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Filtrace, řazení a fulltext přes dodavatele, číslo faktury a název souboru.
+          Stejná logika tabulky jako u dokladů: sloupce Přijato, Dodavatel, Částka, Typ, Stav, Kontrola, Odkaz
+          (Detail + soubor přílohy). Řádky vyžadující kontrolu jsou zvýrazněné. Fulltext: dodavatel, č. faktury,
+          název souboru.
           {canAct
-            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, převést špatně zařazenou položku na doklad platby, nebo smazat doklad (kromě schválených)."
+            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, převést položku na doklad platby, nebo smazat doklad (kromě schválených) ve sloupci Záznam."
             : null}
         </p>
       </div>

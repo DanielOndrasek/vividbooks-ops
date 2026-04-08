@@ -15,9 +15,9 @@ export type InvoiceListRowDto = {
   amountWithoutVatLabel: string | null;
   amountWithVatLabel: string | null;
   dueDateLabel: string | null;
+  documentType: string;
   documentStatus: string;
-  originalFilename: string;
-  extractionConfidenceLabel: string | null;
+  needsManualReview: boolean;
   detailHref: string;
   canApprove: boolean;
   canConvertToPayment: boolean;
@@ -371,18 +371,25 @@ export function InvoicesListTable({ rows, canAct }: Props) {
               )}
               <th className="p-3 font-medium">Přijato</th>
               <th className="p-3 font-medium">Dodavatel</th>
-              <th className="p-3 font-medium">Bez DPH</th>
-              <th className="p-3 font-medium">S DPH</th>
+              <th className="p-3 font-medium">Částka</th>
               <th className="p-3 font-medium">Splatnost</th>
+              <th className="p-3 font-medium">Typ</th>
               <th className="p-3 font-medium">Stav</th>
-              <th className="p-3 font-medium">Soubor</th>
-              <th className="p-3 font-medium">Jistota</th>
-              <th className="p-3 font-medium">Akce</th>
+              <th className="p-3 font-medium">Kontrola</th>
+              <th className="p-3 font-medium">Odkaz</th>
+              {canAct && <th className="p-3 font-medium w-36">Záznam</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map((inv) => (
-              <tr key={inv.id} className="border-b last:border-0">
+              <tr
+                key={inv.id}
+                className={
+                  inv.needsManualReview
+                    ? "border-b border-amber-300/80 bg-amber-50/50 last:border-0 dark:bg-amber-950/20"
+                    : "border-b last:border-0"
+                }
+              >
                 {canAct && (
                   <td className="p-3 align-middle">
                     {inv.canApprove || inv.canConvertToPayment ? (
@@ -401,102 +408,134 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                 <td className="text-muted-foreground whitespace-nowrap p-3">
                   {inv.receivedAtLabel}
                 </td>
-                <td className="max-w-[140px] truncate p-3">
+                <td className="max-w-[160px] truncate p-3">
                   {inv.supplierName || "—"}
                 </td>
                 <td className="whitespace-nowrap p-3">
-                  {inv.amountWithoutVatLabel || "—"}
-                </td>
-                <td className="whitespace-nowrap p-3">
-                  {inv.amountWithVatLabel || "—"}
+                  {inv.amountWithVatLabel ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span>{inv.amountWithVatLabel}</span>
+                      {inv.amountWithoutVatLabel ? (
+                        <span className="text-muted-foreground text-xs">
+                          bez DPH {inv.amountWithoutVatLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : inv.amountWithoutVatLabel ? (
+                    inv.amountWithoutVatLabel
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="whitespace-nowrap p-3">{inv.dueDateLabel || "—"}</td>
+                <td className="p-3 font-mono text-xs">{inv.documentType}</td>
                 <td className="p-3 font-mono text-xs">{inv.documentStatus}</td>
-                <td className="max-w-[120px] truncate p-3" title={inv.originalFilename}>
-                  {inv.originalFilename}
-                </td>
-                <td className="text-muted-foreground p-3">
-                  {inv.extractionConfidenceLabel || "—"}
+                <td className="p-3">
+                  {inv.needsManualReview ? (
+                    <span className="text-amber-800 dark:text-amber-200 text-xs font-medium">
+                      Ano
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                      href={inv.detailHref}
-                      className="text-primary font-medium underline"
-                    >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1">
+                    <Link href={inv.detailHref} className="text-primary underline">
                       Detail
                     </Link>
-                    {canAct && inv.canApprove && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={rowDisabled || rowBusyConvert(inv.id)}
-                        onClick={() => void approveOne(inv.id)}
-                      >
-                        {rowBusyApprove(inv.id) ? (
-                          <>
-                            <Loader2
-                              className="size-3.5 shrink-0 animate-spin"
-                              aria-hidden
-                            />
-                            Schvaluji…
-                          </>
-                        ) : (
-                          "Schválit"
-                        )}
-                      </Button>
-                    )}
-                    {canAct && inv.canConvertToPayment && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={rowDisabled || rowBusyApprove(inv.id)}
-                        onClick={() => void convertOne(inv.id)}
-                      >
-                        {rowBusyConvert(inv.id) ? (
-                          <>
-                            <Loader2
-                              className="size-3.5 shrink-0 animate-spin"
-                              aria-hidden
-                            />
-                            Převádím…
-                          </>
-                        ) : (
-                          "→ Platba"
-                        )}
-                      </Button>
-                    )}
-                    {canAct && inv.canDeleteDocument && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        disabled={
-                          rowDisabled ||
-                          rowBusyApprove(inv.id) ||
-                          rowBusyConvert(inv.id)
-                        }
-                        onClick={() =>
-                          void deleteDocumentRow(inv.documentId, inv.id)
-                        }
-                      >
-                        {rowBusyDelete(inv.documentId) ? (
-                          <>
-                            <Loader2
-                              className="size-3.5 shrink-0 animate-spin"
-                              aria-hidden
-                            />
-                            Mažu…
-                          </>
-                        ) : (
-                          "Smazat doklad"
-                        )}
-                      </Button>
-                    )}
+                    <a
+                      href={`/api/documents/${inv.documentId}/file`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary text-xs underline"
+                    >
+                      Soubor
+                    </a>
                   </div>
                 </td>
+                {canAct && (
+                  <td className="p-3">
+                    <div className="flex flex-col items-stretch gap-1.5">
+                      {inv.canApprove && (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="secondary"
+                          disabled={rowDisabled || rowBusyConvert(inv.id)}
+                          onClick={() => void approveOne(inv.id)}
+                        >
+                          {rowBusyApprove(inv.id) ? (
+                            <>
+                              <Loader2
+                                className="size-3.5 shrink-0 animate-spin"
+                                aria-hidden
+                              />
+                              Schvaluji…
+                            </>
+                          ) : (
+                            "Schválit"
+                          )}
+                        </Button>
+                      )}
+                      {inv.canConvertToPayment && (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          disabled={rowDisabled || rowBusyApprove(inv.id)}
+                          onClick={() => void convertOne(inv.id)}
+                        >
+                          {rowBusyConvert(inv.id) ? (
+                            <>
+                              <Loader2
+                                className="size-3.5 shrink-0 animate-spin"
+                                aria-hidden
+                              />
+                              Převádím…
+                            </>
+                          ) : (
+                            "→ Platba"
+                          )}
+                        </Button>
+                      )}
+                      {inv.canDeleteDocument ? (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="destructive"
+                          disabled={
+                            rowDisabled ||
+                            rowBusyApprove(inv.id) ||
+                            rowBusyConvert(inv.id)
+                          }
+                          onClick={() =>
+                            void deleteDocumentRow(inv.documentId, inv.id)
+                          }
+                        >
+                          {rowBusyDelete(inv.documentId) ? (
+                            <>
+                              <Loader2
+                                className="size-3.5 shrink-0 animate-spin"
+                                aria-hidden
+                              />
+                              Mažu…
+                            </>
+                          ) : (
+                            "Smazat"
+                          )}
+                        </Button>
+                      ) : (
+                        <span
+                          className="text-muted-foreground text-xs"
+                          title="Schválené nelze smazat"
+                        >
+                          —
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
