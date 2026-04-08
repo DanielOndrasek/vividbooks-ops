@@ -59,6 +59,26 @@ export function isDriveConfigured(): boolean {
   }
 }
 
+/** Stažení binárního obsahu souboru ze Shared Drive (náhled, když není webViewLink nebo lokální soubor). */
+export async function downloadDriveFileBuffer(
+  fileId: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const drive = getDrive();
+  const meta = await drive.files.get({
+    fileId,
+    fields: "mimeType",
+    supportsAllDrives: true,
+  });
+  const mimeType = meta.data.mimeType || "application/octet-stream";
+  const res = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" },
+  );
+  const raw = res.data as ArrayBuffer | Buffer;
+  const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  return { buffer, mimeType };
+}
+
 function invoicesRootFolderId(): string {
   const id = process.env.GOOGLE_DRIVE_INVOICES_FOLDER_ID?.trim();
   if (!id) {

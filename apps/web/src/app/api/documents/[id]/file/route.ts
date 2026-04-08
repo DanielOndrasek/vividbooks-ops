@@ -3,7 +3,20 @@ import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/api-session";
+import { getGmailEnvStatus } from "@/lib/gmail-config";
 import { prisma } from "@/lib/prisma";
+import { downloadDriveFileBuffer } from "@/services/drive";
+import { downloadAttachment, getGmailClient } from "@/services/gmail";
+
+function inlineFileResponse(buf: Buffer, mimeType: string, filename: string) {
+  return new NextResponse(new Uint8Array(buf), {
+    headers: {
+      "Content-Type": mimeType || "application/octet-stream",
+      "Content-Disposition": `inline; filename="${encodeURIComponent(filename)}"`,
+      "Cache-Control": "private, max-age=60",
+    },
+  });
+}
 
 export async function GET(
   _req: Request,
@@ -17,7 +30,7 @@ export async function GET(
   const { id } = await ctx.params;
   const doc = await prisma.document.findUnique({
     where: { id },
-    include: { invoice: true, paymentProof: true },
+    include: { invoice: true, paymentProof: true, email: true },
   });
 
   if (!doc) {
@@ -27,15 +40,13 @@ export async function GET(
   if (doc.localFilePath) {
     try {
       const buf = await readFile(doc.localFilePath);
-      return new NextResponse(buf, {
-        headers: {
-          "Content-Type": doc.mimeType || "application/octet-stream",
-          "Content-Disposition": `inline; filename="${encodeURIComponent(doc.originalFilename)}"`,
-          "Cache-Control": "private, max-age=60",
-        },
-      });
+      return inlineFileResponse(
+        buf,
+        doc.mimeType || "application/octet-stream",
+        doc.originalFilename,
+      );
     } catch {
-      /* fall through to Drive */
+      /* na Vercelu často neexistuje — Gmail / Drive níže */
     }
   }
 
@@ -44,8 +55,43 @@ export async function GET(
     return NextResponse.redirect(url);
   }
 
+  const driveFileId = doc.invoice?.driveFileId ?? doc.paymentProof?.driveFileId;
+  if (driveFileId) {
+    try {
+      const { buffer, mimeType } = await downloadDriveFileBuffer(driveFileId);
+      return inlineFileResponse(buffer, mimeType, doc.originalFilename);
+    } catch (e) {
+      console.error("[documents/file] Drive:", e);
+    }
+  }
+
+  if (
+    getGmailEnvStatus().configured &&
+    doc.email?.gmailMessageId &&
+    doc.gmailAttachmentId
+  ) {
+    try {
+      const gmail = getGmailClient();
+      const buf = await downloadAttachment(
+        gmail,
+        doc.email.gmailMessageId,
+        doc.gmailAttachmentId,
+      );
+      return inlineFileResponse(
+        buf,
+        doc.mimeType || "application/octet-stream",
+        doc.originalFilename,
+      );
+    } catch (e) {
+      console.error("[documents/file] Gmail:", e);
+    }
+  }
+
   return NextResponse.json(
-    { error: "Soubor není k dispozici (žádný lokální soubor ani odkaz na Drive)." },
+    {
+      error:
+        "Soubor není k dispozici (lokální cesta neplatná, Drive ani Gmail nestáhly přílohu).",
+    },
     { status: 404 },
   );
 }
