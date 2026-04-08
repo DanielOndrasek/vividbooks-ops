@@ -11,6 +11,7 @@ import {
 } from "@/lib/gmail-config";
 import {
   getAnthropicEnvStatus,
+  getNextAuthEnvStatus,
   getPipedriveEnv,
   maskSecret,
 } from "@/lib/integrations/env";
@@ -26,13 +27,11 @@ export default async function SettingsPage() {
   const previewQuery = buildUnprocessedQuery();
   const pd = getPipedriveEnv();
   const anthropic = getAnthropicEnvStatus();
+  const nextAuth = getNextAuthEnvStatus();
 
   const gmailStatus = getGmailEnvStatus();
   const gmailOk = gmailStatus.configured;
   const driveOk = isDriveConfigured();
-
-  const nextAuthUrl = process.env.NEXTAUTH_URL?.trim() || "";
-  const allowedDomain = process.env.ALLOWED_EMAIL_DOMAIN?.trim() || "";
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -47,9 +46,34 @@ export default async function SettingsPage() {
 
       <section className="space-y-3 rounded-lg border bg-card p-5">
         <h2 className="font-medium">Přihlášení uživatelů (Google / NextAuth)</h2>
+        <p className="text-muted-foreground text-sm">
+          Stav:{" "}
+          <span
+            className={
+              nextAuth.configured ? "text-green-600 dark:text-green-400" : ""
+            }
+          >
+            {nextAuth.configured ? "připraveno k přihlášení" : "neúplné"}
+          </span>
+        </p>
+        {!nextAuth.configured && nextAuth.missing.length > 0 ? (
+          <p className="text-amber-700 text-sm dark:text-amber-300">
+            Na Vercelu (Production) dopln:{" "}
+            <code className="bg-muted rounded px-1 text-xs">
+              {nextAuth.missing.join(", ")}
+            </code>
+          </p>
+        ) : null}
+        {!nextAuth.nextAuthUrl && nextAuth.configured ? (
+          <p className="text-muted-foreground text-xs">
+            <code>NEXTAUTH_URL</code> není nastaveno — na Vercelu s <code>trustHost</code> často stačí;
+            pro jistotu redirectů ho můžeš doplnit (veřejná URL aplikace).
+          </p>
+        ) : null}
         <ul className="text-muted-foreground list-inside list-disc space-y-1 text-sm">
           <li>
-            <code>AUTH_SECRET</code>, <code>NEXTAUTH_URL</code> (veřejná URL této aplikace)
+            <code>AUTH_SECRET</code> nebo <code>NEXTAUTH_SECRET</code>, doporučeně{" "}
+            <code>NEXTAUTH_URL</code>
           </li>
           <li>
             <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>
@@ -60,19 +84,35 @@ export default async function SettingsPage() {
         </ul>
         <div className="text-muted-foreground grid gap-2 text-xs sm:grid-cols-2">
           <div>
+            <span className="block text-[10px] uppercase">
+              AUTH_SECRET / NEXTAUTH_SECRET
+            </span>
+            <code className="bg-muted block rounded p-2">
+              {nextAuth.authSecretSet ? maskSecret(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET) : "(prázdné)"}
+            </code>
+          </div>
+          <div>
             <span className="block text-[10px] uppercase">NEXTAUTH_URL</span>
             <code className="bg-muted block rounded p-2 break-all">
-              {nextAuthUrl || "(prázdné)"}
+              {nextAuth.nextAuthUrl || "(prázdné)"}
             </code>
           </div>
           <div>
             <span className="block text-[10px] uppercase">ALLOWED_EMAIL_DOMAIN</span>
-            <code className="bg-muted block rounded p-2">{allowedDomain || "(vypnuto)"}</code>
+            <code className="bg-muted block rounded p-2">
+              {nextAuth.allowedDomain || "(vypnuto)"}
+            </code>
           </div>
           <div>
             <span className="block text-[10px] uppercase">GOOGLE_CLIENT_ID</span>
             <code className="bg-muted block rounded p-2">
-              {maskSecret(process.env.GOOGLE_CLIENT_ID)}
+              {maskSecret(nextAuth.googleClientId)}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">GOOGLE_CLIENT_SECRET</span>
+            <code className="bg-muted block rounded p-2">
+              {maskSecret(nextAuth.googleClientSecret)}
             </code>
           </div>
         </div>

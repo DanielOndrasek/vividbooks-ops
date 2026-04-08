@@ -1,5 +1,44 @@
 /** Jednotné čtení integračních proměnných (jeden zdroj = prostředí / GitHub Secrets → Vercel). */
 
+export type NextAuthEnvStatus = {
+  configured: boolean;
+  missing: string[];
+  authSecretSet: boolean;
+  nextAuthUrl: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  allowedDomain: string;
+};
+
+/** Minimální sada pro Google přihlášení (NextAuth). NEXTAUTH_URL je vhodné, ale s trustHost na Vercelu nemusí být povinné. */
+export function getNextAuthEnvStatus(): NextAuthEnvStatus {
+  const authSecret =
+    process.env.AUTH_SECRET?.trim() || process.env.NEXTAUTH_SECRET?.trim() || "";
+  const nextAuthUrl = process.env.NEXTAUTH_URL?.trim() || "";
+  const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim() || "";
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim() || "";
+  const allowedDomain = process.env.ALLOWED_EMAIL_DOMAIN?.trim() || "";
+  const missing: string[] = [];
+  if (!authSecret) {
+    missing.push("AUTH_SECRET nebo NEXTAUTH_SECRET");
+  }
+  if (!googleClientId) {
+    missing.push("GOOGLE_CLIENT_ID");
+  }
+  if (!googleClientSecret) {
+    missing.push("GOOGLE_CLIENT_SECRET");
+  }
+  return {
+    configured: missing.length === 0,
+    missing,
+    authSecretSet: Boolean(authSecret),
+    nextAuthUrl,
+    googleClientId,
+    googleClientSecret,
+    allowedDomain,
+  };
+}
+
 export const DEFAULT_PIPEDRIVE_PRODUCT_CATEGORY_FIELD_KEY =
   "3f0c870ac132eec72589da1313e2388977c4a74f";
 
