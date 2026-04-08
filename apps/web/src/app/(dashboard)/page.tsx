@@ -1,12 +1,16 @@
 import Link from "next/link";
 
 import { auth } from "@/auth";
+import { PollEmailButton } from "@/components/poll-email-button";
+import { ProcessDocumentsButton } from "@/components/process-documents-button";
+import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await auth();
+  const canRunJobs = canRunIntegrationJobs(session?.user?.role);
 
   const [pendingInvoices, needsReview, paymentStored, lastJobs] = await Promise.all([
     prisma.invoice.count({
@@ -63,6 +67,29 @@ export default async function DashboardPage() {
           <div className="text-2xl font-semibold">{paymentStored}</div>
         </Link>
       </div>
+
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="font-medium">Ruční úlohy (Gmail → AI)</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Stáhni nové přílohy ze schránky a spusť extrakci polí (Claude). Stejná tlačítka jsou i v{" "}
+          <Link href="/settings" className="text-foreground underline underline-offset-2">
+            Nastavení
+          </Link>
+          .
+        </p>
+        {canRunJobs ? (
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+            <PollEmailButton />
+            <ProcessDocumentsButton />
+          </div>
+        ) : (
+          <p className="text-muted-foreground mt-3 text-sm">
+            Tato akce je pro roli <strong>schvalovatel</strong> nebo <strong>administrátor</strong>.
+            Tvoje role:{" "}
+            <code className="bg-muted rounded px-1 text-xs">{session?.user?.role ?? "—"}</code>.
+          </p>
+        )}
+      </section>
 
       <section className="rounded-lg border bg-card p-5">
         <h2 className="font-medium">Poslední úlohy</h2>

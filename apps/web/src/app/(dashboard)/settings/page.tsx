@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { PipedriveDealFieldsButton } from "@/components/pipedrive-deal-fields-button";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
@@ -21,6 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const session = await auth();
   const isAdmin = session?.user?.role === "ADMIN";
+  const canRunJobs = canRunIntegrationJobs(session?.user?.role);
   const previewQuery = buildUnprocessedQuery();
   const pd = getPipedriveEnv();
   const anthropic = getAnthropicEnvStatus();
@@ -165,10 +167,12 @@ export default async function SettingsPage() {
             {previewQuery}
           </code>
         </p>
-        {isAdmin ? (
+        {canRunJobs ? (
           <PollEmailButton />
         ) : (
-          <p className="text-muted-foreground text-sm">Ruční stahování jen administrátor.</p>
+          <p className="text-muted-foreground text-sm">
+            Ruční stahování jen administrátor nebo schvalovatel.
+          </p>
         )}
       </section>
 
@@ -232,10 +236,12 @@ export default async function SettingsPage() {
             <code>AI_BATCH_LIMIT</code> — volitelné (v závorce výše je skutečně použitá hodnota)
           </li>
         </ul>
-        {isAdmin ? (
+        {canRunJobs ? (
           <ProcessDocumentsButton />
         ) : (
-          <p className="text-muted-foreground text-sm">Jen administrátor.</p>
+          <p className="text-muted-foreground text-sm">
+            AI extrakci spustí administrátor nebo schvalovatel.
+          </p>
         )}
       </section>
 

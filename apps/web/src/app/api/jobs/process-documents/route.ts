@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireAdmin } from "@/lib/api-jobs-auth";
+import { requireJobRunnerSession } from "@/lib/api-jobs-auth";
 import { runDocumentExtractionJob } from "@/services/documentExtractionJob";
 
 /**
- * POST — ADMIN (session).
+ * POST — ADMIN nebo APPROVER (session).
  * GET — Bearer CRON_SECRET (např. druhý Vercel cron).
  */
 export async function POST() {
-  const session = await requireAdmin();
+  const session = await requireJobRunnerSession();
   if (!session) {
-    return NextResponse.json({ error: "Povoleno jen administrátorům." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Povoleno jen administrátorům nebo schvalovatelům." },
+      { status: 403 },
+    );
   }
   try {
     const result = await runDocumentExtractionJob();

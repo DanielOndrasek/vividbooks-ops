@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireAdmin } from "@/lib/api-jobs-auth";
+import { requireJobRunnerSession } from "@/lib/api-jobs-auth";
 import { runEmailPoll } from "@/services/emailPoll";
 
 /**
- * POST — ruční spuštění (jen ADMIN).
+ * POST — ruční spuštění (ADMIN nebo APPROVER).
  * GET — pro Vercel Cron / externí scheduler: hlavička Authorization: Bearer CRON_SECRET.
  */
 export async function POST() {
-  const session = await requireAdmin();
+  const session = await requireJobRunnerSession();
   if (!session) {
-    return NextResponse.json({ error: "Povoleno jen administrátorům." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Povoleno jen administrátorům nebo schvalovatelům." },
+      { status: 403 },
+    );
   }
   try {
     const result = await runEmailPoll();
