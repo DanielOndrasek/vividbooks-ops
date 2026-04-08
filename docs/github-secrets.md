@@ -40,6 +40,9 @@ Přidej jako repository secrets (hodnoty neukládej do gitu):
 | `GMAIL_FILTER_LABEL` | Volitelné |
 | `GMAIL_PROCESSED_LABEL` | Volitelné |
 | `GMAIL_POLL_MAX_RESULTS` | Volitelné |
+| `GMAIL_ONLY_UNREAD` | `1` = jen nepřečtené (výchozí při absenci na Vercelu v kódu), `0` = i přečtené |
+| `GMAIL_DELIVERED_TO` | Např. `hr@vividbooks.com` — jen zprávy doručené na tuto adresu (`deliveredto:`) |
+| `GMAIL_ADDRESS_MATCH_MODE` | Volitelné: `deliveredto` (výchozí) nebo `to` |
 | `CRON_SECRET` | Tajný řetězec pro Vercel Cron (`Authorization: Bearer …`) |
 | `INVOICE_TMP_DIR` | Na Vercelu často prázdné (temp je efemérní) |
 | `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | Celý JSON service accountu (jedna hodnota) |
@@ -59,6 +62,12 @@ Prázdné volitelné secrets workflow přeskočí (v logu bude „Přeskakuji pr
 Skript nastaví proměnné pro prostředí **production** i **preview** (aby fungovaly i PR deploye).
 
 Potom na Vercelu spusť **Redeploy** posledního buildu nebo pushni commit.
+
+Administrátorská role uživateli (po prvním přihlášení do aplikace), z `apps/web` po `vercel env pull`:
+
+```bash
+npm run db:set-role -- 'email@domena.cz' ADMIN
+```
 
 Migrace DB (jednorázově z počítače s produkčním `DATABASE_URL`):
 

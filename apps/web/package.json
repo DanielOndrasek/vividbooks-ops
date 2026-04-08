@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:migrate:prod": "node scripts/migrate-prod.mjs",
+    "db:set-role": "node --env-file=.env.vercel.production scripts/set-user-role.mjs",
     "db:studio": "prisma studio",
     "gmail:token": "node -r dotenv/config scripts/gmail-refresh-token.mjs"
   },
