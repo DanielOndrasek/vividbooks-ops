@@ -9,6 +9,10 @@
     {
       "path": "/api/jobs/process-documents",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/jobs/prune-invoices-db",
+      "schedule": "45 7 * * *"
     }
   ]
 }

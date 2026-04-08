@@ -160,6 +160,7 @@ model Invoice {
 
   @@index([dueDate])
   @@index([supplierName])
+  @@index([approvedAt])
 }
 
 model PaymentProof {

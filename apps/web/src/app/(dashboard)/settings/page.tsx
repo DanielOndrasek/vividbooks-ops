@@ -359,6 +359,9 @@ export default async function SettingsPage() {
           <li>
             <code>DATABASE_URL</code> — PostgreSQL (viz Prisma)
           </li>
+          <li>
+            <code>INVOICE_DB_RETENTION_DAYS</code> — po kolika dnech od schválení smazat fakturu z DB (výchozí 30; soubor zůstane na Drive)
+          </li>
         </ul>
       </section>
 
@@ -370,6 +373,9 @@ export default async function SettingsPage() {
           </li>
           <li>
             <code>GET /api/jobs/process-documents</code> — <code>Bearer CRON_SECRET</code>
+          </li>
+          <li>
+            <code>GET /api/jobs/prune-invoices-db</code> — <code>Bearer CRON_SECRET</code> (denní úklid starých faktur z DB)
           </li>
         </ul>
       </section>
