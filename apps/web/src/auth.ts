@@ -6,6 +6,16 @@ import { prisma } from "@/lib/prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  debug: process.env.AUTH_DEBUG === "1",
+  logger: {
+    error(error) {
+      console.error("[auth]", error);
+      const c = error instanceof Error ? error.cause : undefined;
+      if (c) {
+        console.error("[auth cause]", c);
+      }
+    },
+  },
   adapter: PrismaAdapter(prisma),
   callbacks: {
     ...authConfig.callbacks,
