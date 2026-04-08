@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export type InvoiceListRowDto = {
   id: string;
+  documentId: string;
   receivedAtLabel: string;
   supplierName: string | null;
   amountWithoutVatLabel: string | null;
@@ -20,6 +21,7 @@ export type InvoiceListRowDto = {
   detailHref: string;
   canApprove: boolean;
   canConvertToPayment: boolean;
+  canDeleteDocument: boolean;
 };
 
 type Props = {
@@ -30,6 +32,7 @@ type Props = {
 type Busy =
   | { kind: "approve"; id: string }
   | { kind: "convert"; id: string }
+  | { kind: "delete"; documentId: string }
   | { kind: "bulk-approve" }
   | { kind: "bulk-convert" }
   | null;
@@ -111,6 +114,9 @@ export function InvoicesListTable({ rows, canAct }: Props) {
   function rowBusyConvert(id: string) {
     return busy?.kind === "convert" && busy.id === id;
   }
+  function rowBusyDelete(documentId: string) {
+    return busy?.kind === "delete" && busy.documentId === documentId;
+  }
 
   async function approveOne(invoiceId: string) {
     setBusy({ kind: "approve", id: invoiceId });
@@ -165,6 +171,38 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Doklad převeden na platbu. Zkontrolujte záložku Platby.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(invoiceId);
+        return next;
+      });
+      await router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteDocumentRow(documentId: string, invoiceId: string) {
+    if (
+      !window.confirm(
+        "Trvale smazat doklad včetně této faktury v databázi? Soubory na Drive se tím nesmažou.",
+      )
+    ) {
+      return;
+    }
+    setBusy({ kind: "delete", documentId });
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        cache: "no-store",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error || "Smazání selhalo.");
+        return;
+      }
+      setMessage("Doklad byl smazán.");
       setSelected((prev) => {
         const next = new Set(prev);
         next.delete(invoiceId);
@@ -274,7 +312,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         <div className="flex flex-col gap-3 rounded-md border bg-card/50 p-4">
           <p className="text-muted-foreground text-sm">
             Zaškrtněte řádky a použijte hromadné schválení, nebo hromadný převod na doklad platby (špatná
-            klasifikace AI). Checkbox je u položek, které lze schválit nebo převést.
+            klasifikace AI). U řádku lze také smazat celý doklad (kromě schválených). Checkbox je u položek,
+            které lze schválit nebo převést.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -426,6 +465,33 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                           </>
                         ) : (
                           "→ Platba"
+                        )}
+                      </Button>
+                    )}
+                    {canAct && inv.canDeleteDocument && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={
+                          rowDisabled ||
+                          rowBusyApprove(inv.id) ||
+                          rowBusyConvert(inv.id)
+                        }
+                        onClick={() =>
+                          void deleteDocumentRow(inv.documentId, inv.id)
+                        }
+                      >
+                        {rowBusyDelete(inv.documentId) ? (
+                          <>
+                            <Loader2
+                              className="size-3.5 shrink-0 animate-spin"
+                              aria-hidden
+                            />
+                            Mažu…
+                          </>
+                        ) : (
+                          "Smazat doklad"
                         )}
                       </Button>
                     )}

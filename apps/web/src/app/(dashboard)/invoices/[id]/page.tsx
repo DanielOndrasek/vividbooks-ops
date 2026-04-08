@@ -89,6 +89,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
     (invoice.document.status === "PENDING_APPROVAL" ||
       invoice.document.status === "NEEDS_REVIEW");
 
+  const showInvoiceActionBlock =
+    canAct && (showActions || invoice.document.status !== "APPROVED");
+
   return (
     <div className="space-y-8">
       <div>
@@ -170,10 +173,17 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
             </p>
           )}
 
-          {showActions && (
+          {showInvoiceActionBlock && (
             <section className="space-y-2">
               <h2 className="font-medium">Akce</h2>
-              <InvoiceActions invoiceId={invoice.id} canAct={canAct} />
+              <InvoiceActions
+                invoiceId={invoice.id}
+                documentId={invoice.documentId}
+                documentStatus={invoice.document.status}
+                canAct={canAct}
+                showApproveReject={showActions}
+                afterDeleteHref={backHref}
+              />
             </section>
           )}
 

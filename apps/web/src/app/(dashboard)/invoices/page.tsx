@@ -95,6 +95,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       isInvoiceConvertibleToPaymentProof(inv.document.documentType, inv.document.status);
     return {
       id: inv.id,
+      documentId: inv.documentId,
       receivedAtLabel: inv.document.email.receivedAt.toLocaleString("cs-CZ"),
       supplierName: inv.supplierName,
       amountWithoutVatLabel:
@@ -114,6 +115,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       detailHref: `/invoices/${inv.id}${baseQs ? `?${baseQs}` : ""}`,
       canApprove,
       canConvertToPayment,
+      canDeleteDocument: canAct && st !== "APPROVED",
     };
   });
 
@@ -124,7 +126,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
         <p className="text-muted-foreground mt-1 text-sm">
           Filtrace, řazení a fulltext přes dodavatele, číslo faktury a název souboru.
           {canAct
-            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, nebo špatně zařazenou položku převést na doklad o platbě."
+            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, převést špatně zařazenou položku na doklad platby, nebo smazat doklad (kromě schválených)."
             : null}
         </p>
       </div>
