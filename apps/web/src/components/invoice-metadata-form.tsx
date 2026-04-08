@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+
 type Props = {
   invoiceId: string;
   canEdit: boolean;
@@ -155,13 +157,9 @@ export function InvoiceMetadataForm({ invoiceId, canEdit, initial }: Props) {
           />
         </label>
       </div>
-      <button
-        type="submit"
-        disabled={busy}
-        className="bg-secondary text-secondary-foreground rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-      >
+      <Button type="submit" disabled={busy} variant="secondary">
         Uložit metadata
-      </button>
+      </Button>
       {msg && <p className="text-muted-foreground text-sm">{msg}</p>}
     </form>
   );

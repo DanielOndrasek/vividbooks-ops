@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+
 function prevMonth(): { year: number; month: number } {
   const d = new Date();
   const m = d.getMonth();
@@ -134,14 +136,9 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void run()}
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
+        <Button type="button" disabled={loading} onClick={() => void run()}>
           {loading ? "Počítám…" : "Spočítat provize"}
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -175,9 +172,10 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               type="button"
-              className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+              variant="outline"
+              size="sm"
               onClick={() =>
                 downloadText(
                   `provize_${year}_${String(month).padStart(2, "0")}_zapoctene.csv`,
@@ -187,10 +185,11 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
               }
             >
               CSV — započtené
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+              variant="outline"
+              size="sm"
               onClick={() =>
                 downloadText(
                   `provize_${year}_${String(month).padStart(2, "0")}_vsechny_won.csv`,
@@ -200,7 +199,7 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
               }
             >
               CSV — všechny won v měsíci
-            </button>
+            </Button>
           </div>
 
           <div>

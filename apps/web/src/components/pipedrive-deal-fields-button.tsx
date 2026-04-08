@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+
 export function PipedriveDealFieldsButton() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,14 +36,14 @@ export function PipedriveDealFieldsButton() {
 
   return (
     <div className="space-y-2">
-      <button
+      <Button
         type="button"
+        variant="outline"
         disabled={loading}
         onClick={() => void load()}
-        className="border-input bg-background rounded-md border px-3 py-2 text-sm"
       >
         {loading ? "Načítám…" : "Načíst pole obchodů z Pipedrive (key)"}
-      </button>
+      </Button>
       {error && <p className="text-destructive text-sm">{error}</p>}
       {open && items.length > 0 && (
         <div className="max-h-80 overflow-auto rounded-md border">

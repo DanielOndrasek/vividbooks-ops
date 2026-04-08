@@ -3,6 +3,7 @@ import {
   InvoicesListTable,
   type InvoiceListRowDto,
 } from "@/components/invoices-list-table";
+import { Button } from "@/components/ui/button";
 import { type DocumentStatus, type Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -167,12 +168,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
             <option value="dueDate">Splatnost ↑</option>
           </select>
         </div>
-        <button
-          type="submit"
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 font-medium"
-        >
-          Použít
-        </button>
+        <Button type="submit">Použít</Button>
       </form>
 
       {rows.length === 0 ? (

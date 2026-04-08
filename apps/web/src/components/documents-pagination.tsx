@@ -28,7 +28,7 @@ export function DocumentsPagination({ page, totalPages, total, pageSize }: Props
         {page > 1 ? (
           <Link
             href={prevHref}
-            className="text-primary font-medium underline underline-offset-2"
+            className="text-primary hover:text-primary/85 rounded-md font-medium underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
           >
             ← Předchozí
           </Link>
@@ -38,7 +38,7 @@ export function DocumentsPagination({ page, totalPages, total, pageSize }: Props
         {page < totalPages ? (
           <Link
             href={nextHref}
-            className="text-primary font-medium underline underline-offset-2"
+            className="text-primary hover:text-primary/85 rounded-md font-medium underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
           >
             Další →
           </Link>
