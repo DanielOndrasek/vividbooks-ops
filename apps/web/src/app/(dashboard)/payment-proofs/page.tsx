@@ -26,6 +26,7 @@ export default async function PaymentProofsPage() {
     proofType: p.proofType,
     note: p.note,
     driveUrl: p.driveUrl,
+    receivedAtMs: p.document.email.receivedAt.getTime(),
     receivedAtLabel: p.document.email.receivedAt.toLocaleString("cs-CZ"),
     processedAtLabel: p.document.email.processedAt?.toLocaleString("cs-CZ") ?? null,
     originalFilename: p.document.originalFilename,
@@ -46,9 +47,10 @@ export default async function PaymentProofsPage() {
           sloupci „Uloženo“ datum a odkaz na Drive.
         </p>
         <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed">
-          Prázdné „Uloženo“ a odkaz jen na náhled znamená, že se na disk ještě nedostalo nebo první
+          Prázdné „Uloženo“ a v sloupci Drive pomlčka znamená, že se na disk ještě nedostalo nebo první
           pokus selhal (Drive nebyl nastaven, Gmail token, chybějící soubor na serveru). U řádku lze
-          zkusit tlačítko Nahrát na Drive (role administrátor / schvalovatel).
+          zkusit tlačítko Nahrát na Drive (role administrátor / schvalovatel). Sloupec Přijato lze
+          kliknutím přepínat řazení od nejnovějších / od nejstarších.
         </p>
         {canAct && (
           <p className="text-muted-foreground mt-2 text-xs">

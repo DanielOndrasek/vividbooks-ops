@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +11,8 @@ export type PaymentProofRowDto = {
   proofType: string | null;
   note: string | null;
   driveUrl: string | null;
+  /** Pro řazení podle data přijetí e-mailu (UTC timestamp). */
+  receivedAtMs: number;
   receivedAtLabel: string;
   processedAtLabel: string | null;
   originalFilename: string;
@@ -24,10 +26,27 @@ type Props = {
   canAct: boolean;
 };
 
+type ReceivedSort = "desc" | "asc";
+
 export function PaymentProofsTable({ rows, canAct }: Props) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [receivedSort, setReceivedSort] = useState<ReceivedSort>("desc");
+
+  const sortedRows = useMemo(() => {
+    const copy = [...rows];
+    copy.sort((a, b) =>
+      receivedSort === "desc"
+        ? b.receivedAtMs - a.receivedAtMs
+        : a.receivedAtMs - b.receivedAtMs,
+    );
+    return copy;
+  }, [rows, receivedSort]);
+
+  function toggleReceivedSort() {
+    setReceivedSort((s) => (s === "desc" ? "asc" : "desc"));
+  }
 
   async function retryDriveUpload(proofId: string) {
     setBusyId(proofId);
@@ -96,17 +115,36 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
           <thead>
             <tr>
               <th className="p-3 font-medium">Typ / pozn.</th>
-              <th className="p-3 font-medium">Přijato</th>
+              <th className="p-3 font-medium">
+                <button
+                  type="button"
+                  className="hover:text-foreground text-muted-foreground inline-flex items-center gap-1.5 font-medium underline-offset-4 hover:underline"
+                  onClick={toggleReceivedSort}
+                  aria-label={
+                    receivedSort === "desc"
+                      ? "Řadit přijato od nejnovějších, kliknutím od nejstarších"
+                      : "Řadit přijato od nejstarších, kliknutím od nejnovějších"
+                  }
+                >
+                  Přijato
+                  <span className="text-foreground tabular-nums" aria-hidden>
+                    {receivedSort === "desc" ? "↓" : "↑"}
+                  </span>
+                </button>
+              </th>
               <th className="p-3 font-medium">Zpracováno e-mailu</th>
               <th className="p-3 font-medium">Soubor</th>
               <th className="p-3 font-medium">Stav</th>
               <th className="p-3 font-medium">Uloženo</th>
-              <th className="p-3 font-medium min-w-[140px]">Odkaz</th>
-              {canAct && <th className="p-3 font-medium w-32">Akce</th>}
+              <th className="p-3 font-medium">Detail</th>
+              <th className="p-3 font-medium whitespace-nowrap">Drive</th>
+              {canAct && (
+                <th className="p-3 text-right font-medium whitespace-nowrap">Akce</th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => {
+            {sortedRows.map((p) => {
               const b = busyId === p.id;
               return (
                 <tr key={p.id} className="border-b last:border-0">
@@ -131,50 +169,56 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
                   <td className="text-muted-foreground whitespace-nowrap p-3">
                     {p.storedAtLabel ?? "—"}
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 whitespace-nowrap">
+                    <a
+                      href={p.previewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary text-sm underline underline-offset-2"
+                    >
+                      Otevřít
+                    </a>
+                  </td>
+                  <td className="p-3 whitespace-nowrap">
                     {p.driveUrl ? (
                       <a
                         href={p.driveUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-primary underline"
+                        className="text-primary text-sm underline underline-offset-2"
                       >
-                        Drive
+                        Otevřít na Drive
                       </a>
                     ) : (
-                      <a
-                        href={p.previewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary text-xs underline"
-                      >
-                        Náhled
-                      </a>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
                   {canAct && (
-                    <td className="space-y-1 p-3">
-                      {!p.driveUrl && (
+                    <td className="p-3">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {!p.driveUrl && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="secondary"
+                            disabled={b}
+                            onClick={() => void retryDriveUpload(p.id)}
+                            className="shrink-0"
+                          >
+                            {b ? "…" : "Nahrát na Drive"}
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="xs"
-                          variant="secondary"
+                          variant="destructive"
                           disabled={b}
-                          onClick={() => void retryDriveUpload(p.id)}
-                          className="mr-1"
+                          onClick={() => void deleteProof(p.id)}
+                          className="shrink-0"
                         >
-                          {b ? "…" : "Nahrát na Drive"}
+                          {b ? "…" : "Smazat platbu"}
                         </Button>
-                      )}
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="destructive"
-                        disabled={b}
-                        onClick={() => void deleteProof(p.id)}
-                      >
-                        {b ? "…" : "Smazat platbu"}
-                      </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
