@@ -8,7 +8,11 @@ import {
   gmailDeliveredToAddress,
   gmailOnlyUnread,
 } from "@/lib/gmail-config";
-import { getPipedriveEnv, maskSecret } from "@/lib/integrations/env";
+import {
+  getAnthropicEnvStatus,
+  getPipedriveEnv,
+  maskSecret,
+} from "@/lib/integrations/env";
 import { buildUnprocessedQuery } from "@/services/gmail";
 import { isDriveConfigured } from "@/services/drive";
 
@@ -19,6 +23,7 @@ export default async function SettingsPage() {
   const isAdmin = session?.user?.role === "ADMIN";
   const previewQuery = buildUnprocessedQuery();
   const pd = getPipedriveEnv();
+  const anthropic = getAnthropicEnvStatus();
 
   const gmailStatus = getGmailEnvStatus();
   const gmailOk = gmailStatus.configured;
@@ -169,12 +174,62 @@ export default async function SettingsPage() {
 
       <section className="space-y-3 rounded-lg border bg-card p-5">
         <h2 className="font-medium">AI extrakce (Claude)</h2>
+        <p className="text-muted-foreground text-sm">
+          Stav:{" "}
+          <span
+            className={
+              anthropic.configured ? "text-green-600 dark:text-green-400" : ""
+            }
+          >
+            {anthropic.configured ? "připraveno k extrakci" : "neúplné"}
+          </span>
+        </p>
+        {!anthropic.configured && anthropic.missing.length > 0 ? (
+          <p className="text-amber-700 text-sm dark:text-amber-300">
+            Doplň na Vercelu (Production):{" "}
+            <code className="bg-muted rounded px-1 text-xs">
+              {anthropic.missing.join(", ")}
+            </code>
+          </p>
+        ) : null}
+        <div className="text-muted-foreground grid gap-2 text-xs sm:grid-cols-2">
+          <div>
+            <span className="block text-[10px] uppercase">ANTHROPIC_API_KEY</span>
+            <code className="bg-muted block rounded p-2">
+              {maskSecret(anthropic.apiKey)}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">ANTHROPIC_MODEL (efektivní)</span>
+            <code className="bg-muted block rounded p-2 break-all">
+              {anthropic.effectiveModel}
+              {!anthropic.envModelSet ? " · výchozí z kódu" : ""}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">
+              AI_CONFIDENCE_THRESHOLD (0–1)
+            </span>
+            <code className="bg-muted block rounded p-2">
+              {String(anthropic.effectiveConfidenceThreshold)}
+              {!anthropic.envConfidenceSet ? " · výchozí" : ""}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">AI_BATCH_LIMIT</span>
+            <code className="bg-muted block rounded p-2">
+              {String(anthropic.effectiveBatchLimit)}
+              {!anthropic.envBatchSet ? " · výchozí" : ""}
+            </code>
+          </div>
+        </div>
         <ul className="text-muted-foreground list-inside list-disc space-y-1 text-sm">
           <li>
-            <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_MODEL</code>
+            <code>ANTHROPIC_API_KEY</code> — povinné pro job zpracování dokladů
           </li>
           <li>
-            <code>AI_CONFIDENCE_THRESHOLD</code>, <code>AI_BATCH_LIMIT</code>
+            <code>ANTHROPIC_MODEL</code>, <code>AI_CONFIDENCE_THRESHOLD</code>,{" "}
+            <code>AI_BATCH_LIMIT</code> — volitelné (v závorce výše je skutečně použitá hodnota)
           </li>
         </ul>
         {isAdmin ? (
