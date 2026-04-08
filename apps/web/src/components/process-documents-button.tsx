@@ -44,13 +44,6 @@ export function ProcessDocumentsButton() {
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
-      <p className="text-muted-foreground max-w-xl text-xs">
-        Jedno spuštění zpracuje jen omezený počet dokladů (proměnná{" "}
-        <code className="bg-muted rounded px-1">AI_BATCH_LIMIT</code> na serveru, výchozí 30, max.
-        100). Po nasazení na Vercel zmizí soubory v{" "}
-        <code className="bg-muted rounded px-1">/tmp</code> — job znovu stáhne přílohy z Gmailu.
-        Pokud ve frontě zbývají další, tlačítko spusťte znovu.
-      </p>
     </div>
   );
 }

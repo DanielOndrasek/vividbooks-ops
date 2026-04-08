@@ -9,12 +9,6 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const roleLabels: Record<string, string> = {
-  ADMIN: "Administrátor",
-  APPROVER: "Schvalovatel",
-  VIEWER: "Prohlížející",
-};
-
 export default async function DashboardPage() {
   const session = await auth();
   const canRunJobs = canRunIntegrationJobs(session?.user?.role);
@@ -42,9 +36,6 @@ export default async function DashboardPage() {
       }),
     ]);
 
-  const role = session?.user?.role ?? "—";
-  const roleHuman = roleLabels[role] ?? role;
-
   return (
     <div className="space-y-10">
       <header className="space-y-3">
@@ -57,18 +48,6 @@ export default async function DashboardPage() {
         <p className="text-muted-foreground max-w-2xl text-base leading-relaxed">
           Faktury a doklady z e-mailu, schvalování a ukládání na disk — na jednom místě.
         </p>
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <span>
-            Přihlášen jako{" "}
-            <span className="text-foreground font-medium">{session?.user?.email}</span>
-          </span>
-          <span className="hidden sm:inline" aria-hidden>
-            ·
-          </span>
-          <span className="bg-muted text-foreground inline-flex items-center rounded-full px-3 py-1 text-xs font-medium">
-            {roleHuman}
-          </span>
-        </div>
       </header>
 
       <section aria-label="Souhrn">

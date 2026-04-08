@@ -7,6 +7,7 @@ import {
   prismaWhereDocumentsEligibleForAiRequeue,
 } from "@/lib/document-ai-requeue";
 import { prisma } from "@/lib/prisma";
+import { uploadPaymentReceiptIfConfigured } from "@/services/drive";
 
 export type ReviewResolveAction =
   | "requeue_ai"
@@ -166,6 +167,7 @@ export async function executeReviewResolve(
         action: "review_confirm_payment",
         metadata: { paymentProofId: doc.paymentProof!.id },
       });
+      await uploadPaymentReceiptIfConfigured(documentId);
       return { ok: true };
     }
 

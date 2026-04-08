@@ -295,7 +295,8 @@ function mimeForFilename(name: string): string {
 }
 
 /**
- * Doklad o platbě — ihned po zpracování AI.
+ * Doklad o platbě — ihned po zpracování AI, po převodu z faktury nebo po „Platba v pořádku“.
+ * Po úspěchu: stav STORED, smazání lokálního souboru a vyčištění objemných polí dokumentu v DB.
  */
 export async function uploadPaymentReceiptIfConfigured(
   documentId: string,
@@ -328,6 +329,10 @@ export async function uploadPaymentReceiptIfConfigured(
         type: doc?.documentType,
       },
     });
+    return;
+  }
+
+  if (doc.paymentProof.storedAt != null && doc.paymentProof.driveFileId) {
     return;
   }
 
@@ -367,6 +372,12 @@ export async function uploadPaymentReceiptIfConfigured(
       data: {
         status: DocumentStatus.STORED,
         localFilePath: null,
+        extractedText: null,
+        aiRawResponse: null,
+        parseError: null,
+        contentHash: null,
+        classificationConfidence: null,
+        needsManualReview: false,
       },
     });
 
