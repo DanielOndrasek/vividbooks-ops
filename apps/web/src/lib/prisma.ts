@@ -5,10 +5,25 @@ import { PrismaClient } from "@prisma/client";
 const BUILD_PLACEHOLDER_DATABASE_URL =
   "postgresql://build:build@127.0.0.1:5432/build?schema=public";
 
+function ensureSslForSupabase(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    if (!/\.(pooler\.)?supabase\.co$/i.test(host)) {
+      return url;
+    }
+  } catch {
+    return url;
+  }
+  if (/[?&]sslmode=/.test(url)) {
+    return url;
+  }
+  return url + (url.includes("?") ? "&" : "?") + "sslmode=require";
+}
+
 function resolveDatabaseUrl(): string {
   const trimmed = process.env.DATABASE_URL?.trim();
   if (trimmed) {
-    return trimmed;
+    return ensureSslForSupabase(trimmed);
   }
   if (process.env.NEXT_PHASE === "phase-production-build") {
     return BUILD_PLACEHOLDER_DATABASE_URL;
