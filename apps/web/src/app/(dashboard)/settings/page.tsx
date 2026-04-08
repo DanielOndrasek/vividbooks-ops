@@ -2,7 +2,12 @@ import { auth } from "@/auth";
 import { PipedriveDealFieldsButton } from "@/components/pipedrive-deal-fields-button";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
-import { assertGmailConfigured } from "@/lib/gmail-config";
+import {
+  getGmailEnvStatus,
+  gmailAddressMatchMode,
+  gmailDeliveredToAddress,
+  gmailOnlyUnread,
+} from "@/lib/gmail-config";
 import { getPipedriveEnv, maskSecret } from "@/lib/integrations/env";
 import { buildUnprocessedQuery } from "@/services/gmail";
 import { isDriveConfigured } from "@/services/drive";
@@ -15,13 +20,8 @@ export default async function SettingsPage() {
   const previewQuery = buildUnprocessedQuery();
   const pd = getPipedriveEnv();
 
-  let gmailOk = false;
-  try {
-    assertGmailConfigured();
-    gmailOk = true;
-  } catch {
-    gmailOk = false;
-  }
+  const gmailStatus = getGmailEnvStatus();
+  const gmailOk = gmailStatus.configured;
   const driveOk = isDriveConfigured();
 
   const nextAuthUrl = process.env.NEXTAUTH_URL?.trim() || "";
@@ -110,9 +110,19 @@ export default async function SettingsPage() {
         <p className="text-muted-foreground text-sm">
           Stav:{" "}
           <span className={gmailOk ? "text-green-600 dark:text-green-400" : ""}>
-            {gmailOk ? "nakonfigurováno" : "chybí token / client"}
+            {gmailOk ? "nakonfigurováno" : "neúplné — viz níže"}
           </span>
         </p>
+        {!gmailOk && gmailStatus.missing.length > 0 ? (
+          <p className="text-amber-700 text-sm dark:text-amber-300">
+            Na Vercelu (Production) dopln:{" "}
+            <code className="bg-muted rounded px-1 text-xs">
+              {gmailStatus.missing.join(", ")}
+            </code>
+            . U každé proměnné zkontroluj, že je zaškrtnuté prostředí{" "}
+            <strong>Production</strong> a po změně udělej <strong>Redeploy</strong>.
+          </p>
+        ) : null}
         <ul className="text-muted-foreground list-inside list-disc space-y-1 text-sm">
           <li>
             <code>GMAIL_REFRESH_TOKEN</code>, <code>GMAIL_CLIENT_ID</code>,{" "}
@@ -122,7 +132,28 @@ export default async function SettingsPage() {
             <code>GMAIL_FILTER_LABEL</code>, <code>GMAIL_PROCESSED_LABEL</code>,{" "}
             <code>CRON_SECRET</code>
           </li>
+          <li>
+            Pošta se bere z účtu, ke kterému patří <code>GMAIL_REFRESH_TOKEN</code> (API{" "}
+            <code>users/me</code>). <code>GMAIL_ONLY_UNREAD</code>: jen nepřečtené (výchozí zapnuto,
+            vypnout <code>0</code>).
+          </li>
+          <li>
+            <code>GMAIL_DELIVERED_TO</code> — jen u pošty přeposlané/aliasu do jiné schránky. U{" "}
+            <strong>samostatného</strong> účtu (např. jen HR) nech prázdné a vygeneruj token přihlášením
+            jako tento účet.
+          </li>
         </ul>
+        <p className="text-muted-foreground text-xs">
+          Cílová schránka (doručení):{" "}
+          <code className="bg-muted rounded px-1">
+            {gmailDeliveredToAddress() || "(vše v účtu me)"}
+          </code>{" "}
+          · režim: <strong>{gmailAddressMatchMode()}</strong>
+        </p>
+        <p className="text-muted-foreground text-xs">
+          Filtr nepřečtených:{" "}
+          <strong>{gmailOnlyUnread() ? "ano (is:unread)" : "ne"}</strong>
+        </p>
         <p className="text-muted-foreground text-xs">
           Dotaz:{" "}
           <code className="bg-muted mt-1 block rounded p-2 text-[11px] break-all">
