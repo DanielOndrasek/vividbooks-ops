@@ -46,6 +46,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reason }),
+        cache: "no-store",
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -53,7 +54,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Uloženo.");
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusyDoc(null);
     }
@@ -72,6 +73,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
     try {
       const res = await fetch(`/api/documents/${documentId}`, {
         method: "DELETE",
+        cache: "no-store",
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -79,7 +81,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Doklad byl smazán.");
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusyDoc(null);
     }
@@ -94,6 +96,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),
+        cache: "no-store",
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -101,7 +104,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Faktura zamítnuta.");
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusyDoc(null);
     }

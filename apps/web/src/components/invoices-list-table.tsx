@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -117,6 +118,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
     try {
       const res = await fetch(`/api/invoices/${invoiceId}/approve`, {
         method: "POST",
+        cache: "no-store",
       });
       const data = (await res.json()) as {
         error?: string;
@@ -137,7 +139,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         next.delete(invoiceId);
         return next;
       });
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusy(null);
     }
@@ -155,7 +157,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
     try {
       const res = await fetch(
         `/api/invoices/${invoiceId}/convert-to-payment-proof`,
-        { method: "POST" },
+        { method: "POST", cache: "no-store" },
       );
       const data = (await res.json()) as { error?: string; ok?: boolean };
       if (!res.ok) {
@@ -168,7 +170,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         next.delete(invoiceId);
         return next;
       });
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusy(null);
     }
@@ -185,6 +187,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invoiceIds: selectedApprovable }),
+        cache: "no-store",
       });
       const data = (await res.json()) as {
         error?: string;
@@ -209,7 +212,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       }
       setMessage(parts.join(" "));
       setSelected(new Set());
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusy(null);
     }
@@ -232,6 +235,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invoiceIds: selectedConvertible }),
+        cache: "no-store",
       });
       const data = (await res.json()) as {
         error?: string;
@@ -256,7 +260,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       }
       setMessage(parts.join(" "));
       setSelected(new Set());
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusy(null);
     }
@@ -279,9 +283,14 @@ export function InvoicesListTable({ rows, canAct }: Props) {
               disabled={bulkBusy || selectedApprovable.length === 0}
               onClick={() => void approveBulk()}
             >
-              {busy?.kind === "bulk-approve"
-                ? "Schvaluji…"
-                : `Schválit vybrané (${selectedApprovable.length})`}
+              {busy?.kind === "bulk-approve" ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Schvaluji…
+                </>
+              ) : (
+                `Schválit vybrané (${selectedApprovable.length})`
+              )}
             </Button>
             <Button
               type="button"
@@ -289,9 +298,14 @@ export function InvoicesListTable({ rows, canAct }: Props) {
               disabled={bulkBusy || selectedConvertible.length === 0}
               onClick={() => void convertBulk()}
             >
-              {busy?.kind === "bulk-convert"
-                ? "Převádím…"
-                : `Na doklad platby (${selectedConvertible.length})`}
+              {busy?.kind === "bulk-convert" ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Převádím…
+                </>
+              ) : (
+                `Na doklad platby (${selectedConvertible.length})`
+              )}
             </Button>
           </div>
         </div>
@@ -381,7 +395,17 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                         disabled={rowDisabled || rowBusyConvert(inv.id)}
                         onClick={() => void approveOne(inv.id)}
                       >
-                        {rowBusyApprove(inv.id) ? "…" : "Schválit"}
+                        {rowBusyApprove(inv.id) ? (
+                          <>
+                            <Loader2
+                              className="size-3.5 shrink-0 animate-spin"
+                              aria-hidden
+                            />
+                            Schvaluji…
+                          </>
+                        ) : (
+                          "Schválit"
+                        )}
                       </Button>
                     )}
                     {canAct && inv.canConvertToPayment && (
@@ -392,7 +416,17 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                         disabled={rowDisabled || rowBusyApprove(inv.id)}
                         onClick={() => void convertOne(inv.id)}
                       >
-                        {rowBusyConvert(inv.id) ? "…" : "→ Platba"}
+                        {rowBusyConvert(inv.id) ? (
+                          <>
+                            <Loader2
+                              className="size-3.5 shrink-0 animate-spin"
+                              aria-hidden
+                            />
+                            Převádím…
+                          </>
+                        ) : (
+                          "→ Platba"
+                        )}
                       </Button>
                     )}
                   </div>

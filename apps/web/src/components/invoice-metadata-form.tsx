@@ -44,6 +44,7 @@ export function InvoiceMetadataForm({ invoiceId, canEdit, initial }: Props) {
       const res = await fetch(`/api/invoices/${invoiceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({
           supplierName: supplierName || null,
           amountWithoutVat: amountWithoutVat || null,
@@ -59,7 +60,7 @@ export function InvoiceMetadataForm({ invoiceId, canEdit, initial }: Props) {
         return;
       }
       setMsg("Uloženo.");
-      router.refresh();
+      await router.refresh();
     } finally {
       setBusy(false);
     }
