@@ -16,7 +16,7 @@ import {
   maskSecret,
 } from "@/lib/integrations/env";
 import { buildUnprocessedQuery } from "@/services/gmail";
-import { isDriveConfigured } from "@/services/drive";
+import { isDriveConfigured, verifyDriveRootsOnSharedDrive } from "@/services/drive";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +32,7 @@ export default async function SettingsPage() {
   const gmailStatus = getGmailEnvStatus();
   const gmailOk = gmailStatus.configured;
   const driveOk = isDriveConfigured();
+  const driveShared = driveOk ? await verifyDriveRootsOnSharedDrive() : null;
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -299,9 +300,54 @@ export default async function SettingsPage() {
           </li>
           <li>
             <code>GOOGLE_DRIVE_INVOICES_FOLDER_ID</code>,{" "}
-            <code>GOOGLE_DRIVE_RECEIPTS_FOLDER_ID</code>
+            <code>GOOGLE_DRIVE_RECEIPTS_FOLDER_ID</code> — musí být složky uvnitř{" "}
+            <strong>sdíleného disku</strong> (Shared Drive), ne v osobním „Můj disk“.
           </li>
         </ul>
+        {driveShared?.checked && (
+          <div className="mt-3 space-y-2 text-sm">
+            {driveShared.error ? (
+              <p className="text-destructive">
+                Kontrola složek selhala: {driveShared.error}
+              </p>
+            ) : (
+              <>
+                <p>
+                  Faktury (kořen):{" "}
+                  {driveShared.invoicesOnSharedDrive ? (
+                    <span className="text-green-600 dark:text-green-400">na sdíleném disku</span>
+                  ) : (
+                    <span className="text-destructive font-medium">není na sdíleném disku — schvalování selže</span>
+                  )}
+                </p>
+                <p>
+                  Platby (kořen):{" "}
+                  {driveShared.receiptsOnSharedDrive ? (
+                    <span className="text-green-600 dark:text-green-400">na sdíleném disku</span>
+                  ) : (
+                    <span className="text-destructive font-medium">není na sdíleném disku</span>
+                  )}
+                </p>
+                {(!driveShared.invoicesOnSharedDrive || !driveShared.receiptsOnSharedDrive) && (
+                  <p className="text-muted-foreground border-destructive/30 rounded-md border p-3">
+                    V administraci Google Workspace vytvořte nebo otevřete{" "}
+                    <strong>sdílený disk</strong>, přidejte e-mail service accountu z JSON jako člena se zápisem,
+                    v něm vytvořte složky a zkopírujte jejich ID do proměnných prostředí. Oficiální návod:{" "}
+                    <a
+                      href="https://developers.google.com/workspace/drive/api/guides/about-shareddrives"
+                      className="text-primary underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      About shared drives
+                    </a>
+                    .
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="space-y-2 rounded-lg border bg-card p-5">

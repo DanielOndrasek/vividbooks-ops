@@ -72,12 +72,14 @@ export default async function PaymentProofsPage() {
                         Drive
                       </a>
                     ) : (
-                      <Link
+                      <a
                         href={`/api/documents/${p.documentId}/file`}
+                        target="_blank"
+                        rel="noreferrer"
                         className="text-primary text-xs underline"
                       >
                         Náhled
-                      </Link>
+                      </a>
                     )}
                   </td>
                 </tr>

@@ -50,11 +50,7 @@ export async function GET(
     }
   }
 
-  const url = doc.invoice?.driveUrl ?? doc.paymentProof?.driveUrl;
-  if (url) {
-    return NextResponse.redirect(url);
-  }
-
+  /* Nejdřív doručit bajty přes naši doménu (fetch/náhled). Přesměrování na driveUrl až když nic jiného nejde. */
   const driveFileId = doc.invoice?.driveFileId ?? doc.paymentProof?.driveFileId;
   if (driveFileId) {
     try {
@@ -85,6 +81,11 @@ export async function GET(
     } catch (e) {
       console.error("[documents/file] Gmail:", e);
     }
+  }
+
+  const url = doc.invoice?.driveUrl ?? doc.paymentProof?.driveUrl;
+  if (url) {
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.json(

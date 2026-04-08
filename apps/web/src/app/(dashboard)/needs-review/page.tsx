@@ -1,10 +1,24 @@
-import Link from "next/link";
-
+import { auth } from "@/auth";
+import {
+  NeedsReviewTable,
+  type NeedsReviewRowDto,
+} from "@/components/needs-review-table";
+import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { prisma } from "@/lib/prisma";
+import { getDocumentReviewCapabilities } from "@/services/document-review-resolve";
 
 export const dynamic = "force-dynamic";
 
+function shortNote(parseError: string | null, needsManualReview: boolean): string {
+  const base =
+    parseError?.trim() || (needsManualReview ? "Ruční kontrola" : "—");
+  return base.length > 500 ? `${base.slice(0, 500)}…` : base;
+}
+
 export default async function NeedsReviewPage() {
+  const session = await auth();
+  const canAct = canRunIntegrationJobs(session?.user?.role);
+
   const rows = await prisma.document.findMany({
     where: {
       OR: [{ status: "NEEDS_REVIEW" }, { documentType: "UNKNOWN" }],
@@ -13,8 +27,29 @@ export default async function NeedsReviewPage() {
     take: 200,
     include: {
       email: true,
-      invoice: true,
+      invoice: { select: { id: true } },
+      paymentProof: { select: { id: true } },
     },
+  });
+
+  const dtos: NeedsReviewRowDto[] = rows.map((d) => {
+    const caps = getDocumentReviewCapabilities(d);
+    return {
+      documentId: d.id,
+      receivedAtLabel: d.email.receivedAt.toLocaleString("cs-CZ"),
+      documentType: d.documentType,
+      status: d.status,
+      originalFilename: d.originalFilename,
+      noteShort: shortNote(d.parseError, d.needsManualReview),
+      noteFull: d.parseError,
+      invoiceId: d.invoice?.id ?? null,
+      fileUrl: `/api/documents/${d.id}/file`,
+      canRequeueAi: caps.canRequeueAi,
+      canConfirmInvoice: caps.canConfirmInvoice,
+      canConfirmPayment: caps.canConfirmPayment,
+      canDismiss: caps.canDismiss,
+      canRejectInvoice: caps.canRejectInvoice,
+    };
   });
 
   return (
@@ -24,58 +59,16 @@ export default async function NeedsReviewPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           Neznámé typy, nízká jistota AI nebo chyby uploadu / parsování.
         </p>
+        {!canAct && (
+          <p className="text-muted-foreground mt-2 text-xs">
+            Akce vyřešení kontroly vidí jen administrátor nebo schvalovatel.
+          </p>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">Nic k řešení.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/50 border-b">
-              <tr>
-                <th className="p-3 font-medium">Přijato</th>
-                <th className="p-3 font-medium">Typ</th>
-                <th className="p-3 font-medium">Stav</th>
-                <th className="p-3 font-medium">Soubor</th>
-                <th className="p-3 font-medium">Chyba / pozn.</th>
-                <th className="p-3 font-medium">Akce</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((d) => (
-                <tr key={d.id} className="border-b last:border-0">
-                  <td className="text-muted-foreground whitespace-nowrap p-3">
-                    {d.email.receivedAt.toLocaleString("cs-CZ")}
-                  </td>
-                  <td className="p-3 font-mono text-xs">{d.documentType}</td>
-                  <td className="p-3 font-mono text-xs">{d.status}</td>
-                  <td className="max-w-[160px] truncate p-3" title={d.originalFilename}>
-                    {d.originalFilename}
-                  </td>
-                  <td className="text-muted-foreground max-w-[240px] truncate p-3 text-xs">
-                    {d.parseError || (d.needsManualReview ? "Ruční kontrola" : "—")}
-                  </td>
-                  <td className="p-3">
-                    {d.invoice ? (
-                      <Link
-                        href={`/invoices/${d.invoice.id}`}
-                        className="text-primary underline"
-                      >
-                        Faktura
-                      </Link>
-                    ) : (
-                      <Link
-                        href={`/api/documents/${d.id}/file`}
-                        className="text-primary text-xs underline"
-                      >
-                        Náhled
-                      </Link>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <NeedsReviewTable rows={dtos} canAct={canAct} />
       )}
     </div>
   );

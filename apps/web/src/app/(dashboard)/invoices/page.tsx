@@ -1,8 +1,12 @@
-import Link from "next/link";
-
+import { auth } from "@/auth";
+import {
+  InvoicesListTable,
+  type InvoiceListRowDto,
+} from "@/components/invoices-list-table";
 import { type DocumentStatus, type Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +20,21 @@ const STATUSES: DocumentStatus[] = [
   "PARSED",
 ];
 
+function formatConfidence(value: unknown): string | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : null;
+}
+
 type Props = {
   searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
 };
 
 export default async function InvoicesPage({ searchParams }: Props) {
   const sp = await searchParams;
+  const session = await auth();
+  const role = session?.user?.role;
+  const canAct = role === "ADMIN" || role === "APPROVER";
+
   const q = sp.q?.trim();
   const sort = sp.sort === "dueDate" ? "dueDate" : "receivedAt";
   const statusFilter = sp.status as DocumentStatus | undefined;
@@ -72,12 +85,46 @@ export default async function InvoicesPage({ searchParams }: Props) {
   }
   const baseQs = qs.toString();
 
+  const tableRows: InvoiceListRowDto[] = rows.map((inv) => {
+    const st = inv.document.status;
+    const canApprove =
+      canAct && (st === "PENDING_APPROVAL" || st === "NEEDS_REVIEW");
+    const canConvertToPayment =
+      canAct &&
+      isInvoiceConvertibleToPaymentProof(inv.document.documentType, inv.document.status);
+    return {
+      id: inv.id,
+      receivedAtLabel: inv.document.email.receivedAt.toLocaleString("cs-CZ"),
+      supplierName: inv.supplierName,
+      amountWithoutVatLabel:
+        inv.amountWithoutVat != null
+          ? `${inv.amountWithoutVat.toString()} ${inv.currency}`
+          : null,
+      amountWithVatLabel:
+        inv.amountWithVat != null
+          ? `${inv.amountWithVat.toString()} ${inv.currency}`
+          : null,
+      dueDateLabel: inv.dueDate
+        ? inv.dueDate.toLocaleDateString("cs-CZ")
+        : null,
+      documentStatus: st,
+      originalFilename: inv.document.originalFilename,
+      extractionConfidenceLabel: formatConfidence(inv.extractionConfidence),
+      detailHref: `/invoices/${inv.id}${baseQs ? `?${baseQs}` : ""}`,
+      canApprove,
+      canConvertToPayment,
+    };
+  });
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Faktury ke schválení</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Filtrace, řazení a fulltext přes dodavatele, číslo faktury a název souboru.
+          {canAct
+            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, nebo špatně zařazenou položku převést na doklad o platbě."
+            : null}
         </p>
       </div>
 
@@ -131,67 +178,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">Žádné záznamy.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/50 border-b">
-              <tr>
-                <th className="p-3 font-medium">Přijato</th>
-                <th className="p-3 font-medium">Dodavatel</th>
-                <th className="p-3 font-medium">Bez DPH</th>
-                <th className="p-3 font-medium">S DPH</th>
-                <th className="p-3 font-medium">Splatnost</th>
-                <th className="p-3 font-medium">Stav</th>
-                <th className="p-3 font-medium">Soubor</th>
-                <th className="p-3 font-medium">Jistota</th>
-                <th className="p-3 font-medium">Akce</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((inv) => (
-                <tr key={inv.id} className="border-b last:border-0">
-                  <td className="text-muted-foreground whitespace-nowrap p-3">
-                    {inv.document.email.receivedAt.toLocaleString("cs-CZ")}
-                  </td>
-                  <td className="max-w-[140px] truncate p-3">
-                    {inv.supplierName || "—"}
-                  </td>
-                  <td className="whitespace-nowrap p-3">
-                    {inv.amountWithoutVat != null
-                      ? `${inv.amountWithoutVat.toString()} ${inv.currency}`
-                      : "—"}
-                  </td>
-                  <td className="whitespace-nowrap p-3">
-                    {inv.amountWithVat != null
-                      ? `${inv.amountWithVat.toString()} ${inv.currency}`
-                      : "—"}
-                  </td>
-                  <td className="whitespace-nowrap p-3">
-                    {inv.dueDate
-                      ? inv.dueDate.toLocaleDateString("cs-CZ")
-                      : "—"}
-                  </td>
-                  <td className="p-3 font-mono text-xs">{inv.document.status}</td>
-                  <td className="max-w-[120px] truncate p-3" title={inv.document.originalFilename}>
-                    {inv.document.originalFilename}
-                  </td>
-                  <td className="text-muted-foreground p-3">
-                    {inv.extractionConfidence != null
-                      ? inv.extractionConfidence.toFixed(2)
-                      : "—"}
-                  </td>
-                  <td className="p-3">
-                    <Link
-                      href={`/invoices/${inv.id}${baseQs ? `?${baseQs}` : ""}`}
-                      className="text-primary font-medium underline"
-                    >
-                      Detail
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <InvoicesListTable rows={tableRows} canAct={canAct} />
       )}
     </div>
   );

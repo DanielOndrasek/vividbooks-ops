@@ -8,6 +8,7 @@ import { google } from "googleapis";
 
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
+import { loadDocumentFileBuffer } from "@/lib/document-file-buffer";
 import { DocumentType, DocumentStatus } from "@prisma/client";
 
 import { safeFileName } from "@/services/gmail";
@@ -93,6 +94,97 @@ function receiptsRootFolderId(): string {
     throw new Error("Chybí GOOGLE_DRIVE_RECEIPTS_FOLDER_ID.");
   }
   return id;
+}
+
+/** Service account nemá úložiště na „Můj disk“ — kořen musí být na Shared Drive (driveId u položky). */
+async function assertFolderIsOnSharedDrive(
+  drive: ReturnType<typeof getDrive>,
+  folderId: string,
+  label: string,
+): Promise<void> {
+  let meta;
+  try {
+    meta = await drive.files.get({
+      fileId: folderId,
+      fields: "id,name,driveId,mimeType",
+      supportsAllDrives: true,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Složka Google Drive (${label}) není pro service account dostupná: ${msg}. Ověřte ID složky a že je účet z JSON přidaný jako člen sdíleného disku.`,
+    );
+  }
+  if (meta.data.mimeType !== "application/vnd.google-apps.folder") {
+    throw new Error(
+      `Proměnná pro ${label} neukazuje na složku (mimeType: ${meta.data.mimeType ?? "?"}).`,
+    );
+  }
+  if (!meta.data.driveId) {
+    throw new Error(
+      `Složka „${meta.data.name ?? folderId}“ (${label}) není na Google Shared Drive. ` +
+        `Service account nemá vlastní kvótu na osobním „Můj disk“. ` +
+        `V Google Workspace zřiďte sdílený disk, přidejte e-mail service accountu z GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON jako člena (např. Správce obsahu), ` +
+        `v tomto disku vytvořte kořenové složky pro faktury a doklady platby a jejich ID nastavte v GOOGLE_DRIVE_INVOICES_FOLDER_ID / GOOGLE_DRIVE_RECEIPTS_FOLDER_ID. ` +
+        `Návod: https://developers.google.com/workspace/drive/api/guides/about-shareddrives`,
+    );
+  }
+}
+
+function explainDriveStorageError(raw: string): string {
+  if (/storage quota|shared drives|Service Accounts do not have storage/i.test(raw)) {
+    return (
+      "Google Drive odmítl upload: service account nemůže ukládat na osobní „Můj disk“. " +
+      "Kořenové složky v env musí ležet na Shared Drive (sdílený disk) a service account musí být jeho členem se zápisem. " +
+      "Podrobnosti viz Nastavení → Google Drive nebo https://developers.google.com/workspace/drive/api/guides/about-shareddrives"
+    );
+  }
+  return raw;
+}
+
+/** Diagnostika pro UI (Nastavení): obě kořenové složky musí mít driveId. */
+export async function verifyDriveRootsOnSharedDrive(): Promise<{
+  checked: boolean;
+  invoicesOnSharedDrive: boolean | null;
+  receiptsOnSharedDrive: boolean | null;
+  error?: string;
+}> {
+  if (!isDriveConfigured()) {
+    return {
+      checked: false,
+      invoicesOnSharedDrive: null,
+      receiptsOnSharedDrive: null,
+    };
+  }
+  try {
+    const drive = getDrive();
+    const inv = invoicesRootFolderId();
+    const rec = receiptsRootFolderId();
+    const [invMeta, recMeta] = await Promise.all([
+      drive.files.get({
+        fileId: inv,
+        fields: "driveId,mimeType",
+        supportsAllDrives: true,
+      }),
+      drive.files.get({
+        fileId: rec,
+        fields: "driveId,mimeType",
+        supportsAllDrives: true,
+      }),
+    ]);
+    return {
+      checked: true,
+      invoicesOnSharedDrive: Boolean(invMeta.data.driveId),
+      receiptsOnSharedDrive: Boolean(recMeta.data.driveId),
+    };
+  } catch (e) {
+    return {
+      checked: true,
+      invoicesOnSharedDrive: null,
+      receiptsOnSharedDrive: null,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
 }
 
 function ymFromDate(d: Date): { year: string; month: string } {
@@ -225,7 +317,6 @@ export async function uploadPaymentReceiptIfConfigured(
   if (
     !doc ||
     doc.documentType !== DocumentType.PAYMENT_RECEIPT ||
-    !doc.localFilePath ||
     !doc.paymentProof
   ) {
     await writeAuditLog({
@@ -242,9 +333,12 @@ export async function uploadPaymentReceiptIfConfigured(
 
   try {
     const fs = await import("node:fs/promises");
-    const buffer = await fs.readFile(doc.localFilePath);
+    const buffer = await loadDocumentFileBuffer(doc, {
+      driveFileId: doc.paymentProof.driveFileId,
+    });
     const drive = getDrive();
     const root = receiptsRootFolderId();
+    await assertFolderIsOnSharedDrive(drive, root, "doklady platby (GOOGLE_DRIVE_RECEIPTS_FOLDER_ID)");
     const { folderId, displayPath } = await ensureYearMonthFolder(
       drive,
       root,
@@ -276,10 +370,12 @@ export async function uploadPaymentReceiptIfConfigured(
       },
     });
 
-    try {
-      await fs.unlink(doc.localFilePath);
-    } catch {
-      /* temp */
+    if (doc.localFilePath) {
+      try {
+        await fs.unlink(doc.localFilePath);
+      } catch {
+        /* temp */
+      }
     }
 
     await writeAuditLog({
@@ -294,7 +390,8 @@ export async function uploadPaymentReceiptIfConfigured(
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    const msg = explainDriveStorageError(raw);
     await prisma.document.update({
       where: { id: documentId },
       data: {
@@ -335,7 +432,6 @@ export async function uploadApprovedInvoiceToDrive(
     !doc ||
     doc.documentType !== DocumentType.INVOICE ||
     doc.status !== DocumentStatus.APPROVED ||
-    !doc.localFilePath ||
     !doc.invoice
   ) {
     return {
@@ -346,9 +442,12 @@ export async function uploadApprovedInvoiceToDrive(
 
   try {
     const fs = await import("node:fs/promises");
-    const buffer = await fs.readFile(doc.localFilePath);
+    const buffer = await loadDocumentFileBuffer(doc, {
+      driveFileId: doc.invoice.driveFileId,
+    });
     const drive = getDrive();
     const root = invoicesRootFolderId();
+    await assertFolderIsOnSharedDrive(drive, root, "faktury (GOOGLE_DRIVE_INVOICES_FOLDER_ID)");
     const anchor = doc.invoice.issueDate ?? doc.email.receivedAt;
     const { folderId, displayPath } = await ensureYearMonthFolder(
       drive,
@@ -379,10 +478,12 @@ export async function uploadApprovedInvoiceToDrive(
       },
     });
 
-    try {
-      await fs.unlink(doc.localFilePath);
-    } catch {
-      /* ignore */
+    if (doc.localFilePath) {
+      try {
+        await fs.unlink(doc.localFilePath);
+      } catch {
+        /* ignore */
+      }
     }
 
     await writeAuditLog({
@@ -399,7 +500,8 @@ export async function uploadApprovedInvoiceToDrive(
 
     return { ok: true, url: uploaded.webViewLink };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    const msg = explainDriveStorageError(raw);
     await prisma.document.update({
       where: { id: documentId },
       data: { status: DocumentStatus.UPLOAD_FAILED, parseError: msg.slice(0, 4000) },

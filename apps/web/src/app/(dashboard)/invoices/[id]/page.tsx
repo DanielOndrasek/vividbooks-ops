@@ -2,11 +2,36 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { auth } from "@/auth";
+import { DocumentPreview } from "@/components/document-preview";
 import { InvoiceActions } from "@/components/invoice-actions";
 import { InvoiceMetadataForm } from "@/components/invoice-metadata-form";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+
+function formatConfidence(value: unknown): string {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+const AUDIT_METADATA_MAX = 6000;
+
+function safeStringifyMetadata(metadata: unknown): string {
+  try {
+    const s = JSON.stringify(metadata, (_key, v) =>
+      typeof v === "bigint" ? v.toString() : v,
+    );
+    if (s.length > AUDIT_METADATA_MAX) {
+      return `${s.slice(0, AUDIT_METADATA_MAX)}… (zkráceno)`;
+    }
+    return s;
+  } catch {
+    const fallback = String(metadata);
+    return fallback.length > AUDIT_METADATA_MAX
+      ? `${fallback.slice(0, AUDIT_METADATA_MAX)}…`
+      : fallback;
+  }
+}
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -87,20 +112,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
         <section className="space-y-2">
           <h2 className="font-medium">Náhled</h2>
           <div className="bg-muted/30 aspect-[3/4] max-h-[720px] overflow-hidden rounded-lg border">
-            {invoice.document.mimeType === "application/pdf" ? (
-              <iframe
-                title="Náhled PDF"
-                src={previewSrc}
-                className="h-full min-h-[480px] w-full"
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewSrc}
-                alt=""
-                className="h-full w-full object-contain"
-              />
-            )}
+            <DocumentPreview
+              fileUrl={previewSrc}
+              mimeType={invoice.document.mimeType}
+              title="Náhled PDF"
+            />
           </div>
         </section>
 
@@ -120,8 +136,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
               }}
             />
             <p className="text-muted-foreground text-xs">
-              Klasifikace: {(invoice.document.classificationConfidence ?? 0).toFixed(2)} ·
-              Extrakce: {(invoice.extractionConfidence ?? 0).toFixed(2)}
+              Klasifikace: {formatConfidence(invoice.document.classificationConfidence)} ·
+              Extrakce: {formatConfidence(invoice.extractionConfidence)}
             </p>
           </section>
 
@@ -174,7 +190,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
                     {l.user?.email ? ` · ${l.user.email}` : ""}
                     {l.metadata ? (
                       <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted/50 p-2">
-                        {JSON.stringify(l.metadata, null, 0)}
+                        {safeStringifyMetadata(l.metadata)}
                       </pre>
                     ) : null}
                   </li>

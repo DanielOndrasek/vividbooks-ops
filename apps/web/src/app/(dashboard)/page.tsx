@@ -12,7 +12,8 @@ export default async function DashboardPage() {
   const session = await auth();
   const canRunJobs = canRunIntegrationJobs(session?.user?.role);
 
-  const [pendingInvoices, needsReview, paymentStored, lastJobs] = await Promise.all([
+  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs] =
+    await Promise.all([
     prisma.invoice.count({
       where: {
         document: { status: { in: ["PENDING_APPROVAL", "NEEDS_REVIEW"] } },
@@ -24,6 +25,9 @@ export default async function DashboardPage() {
       },
     }),
     prisma.paymentProof.count({ where: { storedAt: { not: null } } }),
+    prisma.document.count({
+      where: { status: "NEW", documentType: "UNCLASSIFIED" },
+    }),
     prisma.processingJob.findMany({
       orderBy: { createdAt: "desc" },
       take: 5,
@@ -75,7 +79,8 @@ export default async function DashboardPage() {
           <Link href="/settings" className="text-foreground underline underline-offset-2">
             Nastavení
           </Link>
-          .
+          . Ve frontě na AI (nové, neklasifikované):{" "}
+          <strong>{aiQueue}</strong> — při větším počtu úlohu opakuj, dokud nebude 0.
         </p>
         {canRunJobs ? (
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">

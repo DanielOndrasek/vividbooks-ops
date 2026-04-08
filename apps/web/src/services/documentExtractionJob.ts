@@ -2,11 +2,10 @@
  * Dokumenty NEW + UNCLASSIFIED → klasifikace + extrakce → faktury (schválení) / platby (Drive).
  */
 
-import { readFile } from "node:fs/promises";
-
 import { DocumentStatus, DocumentType } from "@prisma/client";
 
 import { writeAuditLog } from "@/lib/audit";
+import { loadDocumentFileBuffer } from "@/lib/document-file-buffer";
 import { prisma } from "@/lib/prisma";
 import {
   classifyDocument,
@@ -22,7 +21,7 @@ function confidenceThreshold(): number {
 
 function batchLimit(): number {
   const n = Number(process.env.AI_BATCH_LIMIT);
-  return Number.isFinite(n) && n > 0 ? Math.min(n, 50) : 10;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 30;
 }
 
 function parseIsoDate(raw: string | null): Date | null {
@@ -67,10 +66,10 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
     where: {
       status: "NEW",
       documentType: "UNCLASSIFIED",
-      localFilePath: { not: null },
     },
     orderBy: { createdAt: "asc" },
     take: limit,
+    include: { email: true },
   });
 
   const job = await prisma.processingJob.create({
@@ -91,12 +90,7 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
   try {
     for (const doc of docs) {
       try {
-        await processOneDocument(
-          doc.id,
-          doc.localFilePath!,
-          doc.originalFilename,
-          threshold,
-        );
+        await processOneDocument(doc, threshold);
         processed += 1;
       } catch (err) {
         failed += 1;
@@ -151,13 +145,18 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
 }
 
 async function processOneDocument(
-  id: string,
-  localFilePath: string,
-  originalFilename: string,
+  doc: {
+    id: string;
+    originalFilename: string;
+    localFilePath: string | null;
+    gmailAttachmentId: string;
+    email: { gmailMessageId: string } | null;
+  },
   threshold: number,
 ): Promise<void> {
-  const buffer = await readFile(localFilePath);
-  const mediaType = resolveMediaType(originalFilename);
+  const buffer = await loadDocumentFileBuffer(doc);
+  const mediaType = resolveMediaType(doc.originalFilename);
+  const id = doc.id;
 
   const classification = await classifyDocument(buffer, mediaType);
 

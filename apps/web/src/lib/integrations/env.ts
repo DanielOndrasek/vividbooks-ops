@@ -101,7 +101,7 @@ function resolveAiConfidenceThreshold(): number {
 
 function resolveAiBatchLimit(): number {
   const n = Number(process.env.AI_BATCH_LIMIT);
-  return Number.isFinite(n) && n > 0 ? Math.min(n, 50) : 10;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 30;
 }
 
 export type AnthropicEnvStatus = {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
-import { runInvoiceApproval } from "@/services/invoice-approval";
+import { convertInvoiceToPaymentProof } from "@/services/invoice-convert-to-payment";
 
 export async function POST(
   _req: Request,
@@ -17,27 +17,18 @@ export async function POST(
   }
 
   const { id: invoiceId } = await ctx.params;
-  const r = await runInvoiceApproval(invoiceId, session!.user!.id);
+  const r = await convertInvoiceToPaymentProof(invoiceId, session!.user!.id);
 
   if (!r.ok) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: r.error,
-        invoiceId: r.invoiceId,
-        ...(r.httpStatus === 502
-          ? {
-              hint: "Stav dokumentu může být UPLOAD_FAILED — zkuste znovu po opravě Drive.",
-            }
-          : {}),
-      },
+      { ok: false, error: r.error, invoiceId: r.invoiceId },
       { status: r.httpStatus },
     );
   }
 
   return NextResponse.json({
     ok: true,
-    driveUrl: r.driveUrl,
-    invoiceId: r.invoiceId,
+    documentId: r.documentId,
+    formerInvoiceId: r.formerInvoiceId,
   });
 }

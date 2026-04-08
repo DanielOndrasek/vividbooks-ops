@@ -12,7 +12,10 @@ import { google, type gmail_v1 } from "googleapis";
 import {
   assertGmailConfigured,
   getGmailOAuthCredentials,
+  gmailAddressMatchMode,
+  gmailDeliveredToAddress,
   gmailFilterLabel,
+  gmailOnlyUnread,
   gmailPollMaxResults,
   gmailProcessedLabel,
 } from "@/lib/gmail-config";
@@ -43,11 +46,19 @@ function labelQueryToken(name: string): string {
   return /\s/.test(t) ? `"${t.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : t;
 }
 
-/** Gmail vyhledávací dotaz: přílohy, filtrační label, bez labelu „zpracováno“. */
+/** Gmail vyhledávací dotaz: přílohy, volitelně konkrétní příjemce, label, bez „zpracováno“, nepřečtené. */
 export function buildUnprocessedQuery(): string {
   const filter = labelQueryToken(gmailFilterLabel());
   const processed = labelQueryToken(gmailProcessedLabel());
   const parts = ["has:attachment"];
+  if (gmailOnlyUnread()) {
+    parts.push("is:unread");
+  }
+  const inboxAddr = gmailDeliveredToAddress();
+  if (inboxAddr) {
+    const op = gmailAddressMatchMode();
+    parts.push(`${op}:${labelQueryToken(inboxAddr)}`);
+  }
   if (filter) {
     parts.push(`label:${filter}`);
   }

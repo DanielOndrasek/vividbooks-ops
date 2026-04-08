@@ -1,21 +1,52 @@
 /**
  * Jednorázově získá GMAIL_REFRESH_TOKEN (rozsahy gmail.readonly + gmail.modify).
  *
- * Před spuštěním v Google Cloud Console u OAuth klienta (typ Web) přidej přesměrovací URI:
- *   http://127.0.0.1:47863/oauth2callback
+ * Která schránka: účet, se kterým v prohlížeči dokončíš Google přihlášení (např. jen hr@vividbooks.com
+ * v anonymním okně). Token pak vždy patří jen tomu účtu — pro dedikovaný fakturční účet nic jiného
+ * neřeš.
  *
- * Spuštění z kořene invoice-portal:
- *   npm run gmail:token
+ * Před spuštěním v Google Cloud Console u OAuth klienta (typ Web) přidej přesměrovací URI
+ * přesně stejnou jako níže (Google rozlišuje 127.0.0.1 vs localhost).
+ * Volitelně: GMAIL_OAUTH_REDIRECT_URI=… musí sedět 1:1 s GCP.
+ *
+ * Spuštění z apps/web: npm run gmail:token
  */
 
 import { config } from "dotenv";
+import { existsSync } from "node:fs";
 import http from "node:http";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { google } from "googleapis";
 
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const webRoot = resolve(__dirname, "..");
+const vercelEnv = resolve(webRoot, ".env.vercel.production");
+
+if (existsSync(vercelEnv)) {
+  config({ path: vercelEnv });
+}
+config({ path: resolve(webRoot, ".env"), override: true });
 config();
 
-const PORT = 47863;
-const REDIRECT_URI = `http://127.0.0.1:${PORT}/oauth2callback`;
+const DEFAULT_REDIRECT = "http://127.0.0.1:47863/oauth2callback";
+const REDIRECT_URI =
+  process.env.GMAIL_OAUTH_REDIRECT_URI?.trim() || DEFAULT_REDIRECT;
+
+let redirectUrl;
+try {
+  redirectUrl = new URL(REDIRECT_URI);
+} catch {
+  console.error("Neplatná GMAIL_OAUTH_REDIRECT_URI:", REDIRECT_URI);
+  process.exit(1);
+}
+const PORT = Number(redirectUrl.port);
+if (!Number.isFinite(PORT) || PORT <= 0) {
+  console.error(
+    "V redirect URI musí být explicitní port, např. http://127.0.0.1:47863/oauth2callback",
+  );
+  process.exit(1);
+}
 
 const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GMAIL_CLIENT_ID;
 const clientSecret =
@@ -51,7 +82,7 @@ const server = http.createServer(async (req, res) => {
     res.end();
     return;
   }
-  const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
+  const url = new URL(req.url, `${redirectUrl.protocol}//${redirectUrl.host}`);
   const code = url.searchParams.get("code");
   const err = url.searchParams.get("error");
   if (err) {
@@ -96,9 +127,15 @@ const server = http.createServer(async (req, res) => {
   process.exit(0);
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log("\n1) V Google Cloud → OAuth klient → Authorized redirect URIs přidej:");
+server.listen(PORT, "0.0.0.0", () => {
+  console.log("\n--- Gmail OAuth (stejný Client ID jako NextAuth) ---\n");
+  console.log(
+    "Chyba 400 redirect_uri_mismatch = v GCP není přesně tato URI. Zkopíruj ji do:\n" +
+      "Google Cloud Console → APIs & Services → Credentials → (tvůj Web client) →\n" +
+      "Authorized redirect URIs → + ADD URI\n",
+  );
+  console.log("Přidej PŘESNĚ tento řádek (bez mezer navíc):");
   console.log(`   ${REDIRECT_URI}\n`);
-  console.log("2) Otevři v prohlížeči:\n");
+  console.log("Ulož v GCP, počkej ~1 minutu, pak otevři:\n");
   console.log(authUrl, "\n");
 });
