@@ -238,6 +238,7 @@ async function createFolder(
   return id;
 }
 
+/** Složky YYYY / MM podle předaného data — u uploadů používat datum nahrání na disk, ne datum z dokladu. */
 async function ensureYearMonthFolder(
   drive: ReturnType<typeof getDrive>,
   rootFolderId: string,
@@ -344,10 +345,11 @@ export async function uploadPaymentReceiptIfConfigured(
     const drive = getDrive();
     const root = receiptsRootFolderId();
     await assertFolderIsOnSharedDrive(drive, root, "doklady platby (GOOGLE_DRIVE_RECEIPTS_FOLDER_ID)");
+    const uploadedAt = new Date();
     const { folderId, displayPath } = await ensureYearMonthFolder(
       drive,
       root,
-      doc.email.receivedAt,
+      uploadedAt,
     );
     const fileName = safeFileName(doc.originalFilename);
     const uploaded = await uploadBufferToFolder(
@@ -459,11 +461,11 @@ export async function uploadApprovedInvoiceToDrive(
     const drive = getDrive();
     const root = invoicesRootFolderId();
     await assertFolderIsOnSharedDrive(drive, root, "faktury (GOOGLE_DRIVE_INVOICES_FOLDER_ID)");
-    const anchor = doc.invoice.issueDate ?? doc.email.receivedAt;
+    const uploadedAt = new Date();
     const { folderId, displayPath } = await ensureYearMonthFolder(
       drive,
       root,
-      anchor,
+      uploadedAt,
     );
     const fileName = safeFileName(doc.originalFilename);
     const uploaded = await uploadBufferToFolder(
