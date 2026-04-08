@@ -10,3 +10,4 @@ __pycache__/
 apps/web/.env
 apps/web/.env.local
 apps/web/.vercel
+.vercel
