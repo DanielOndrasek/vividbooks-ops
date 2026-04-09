@@ -10,6 +10,7 @@ import { RequeueFailedDocumentsButton } from "@/components/requeue-failed-docume
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { isDocumentEligibleForAiRequeue } from "@/lib/document-ai-requeue";
 import { prisma } from "@/lib/prisma";
+import { getDocumentReviewCapabilities } from "@/services/document-review-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -49,24 +50,33 @@ export default async function DocumentsPage({ searchParams }: Props) {
     }),
   ]);
 
-  const tableRows: DocumentTableRow[] = rows.map((r) => ({
-    id: r.id,
-    receivedAtLabel: r.email.receivedAt.toLocaleString("cs-CZ"),
-    supplierName: r.invoice?.supplierName ?? null,
-    amountWithVatLabel:
-      r.invoice?.amountWithVat != null ? r.invoice.amountWithVat.toString() : null,
-    documentType: r.documentType,
-    status: r.status,
-    needsManualReview: r.needsManualReview,
-    invoiceId: r.invoice?.id ?? null,
-    canRequeueAi: isDocumentEligibleForAiRequeue({
-      status: r.status,
+  const tableRows: DocumentTableRow[] = rows.map((r) => {
+    const caps = getDocumentReviewCapabilities({
       documentType: r.documentType,
-      invoice: r.invoice,
-      paymentProof: r.paymentProof,
-    }),
-    canDeleteDocument: canRunJobs && r.status !== "APPROVED",
-  }));
+      status: r.status,
+      invoice: r.invoice ? { id: r.invoice.id } : null,
+      paymentProof: r.paymentProof ? { id: r.paymentProof.id } : null,
+    });
+    return {
+      id: r.id,
+      receivedAtLabel: r.email.receivedAt.toLocaleString("cs-CZ"),
+      supplierName: r.invoice?.supplierName ?? null,
+      amountWithVatLabel:
+        r.invoice?.amountWithVat != null ? r.invoice.amountWithVat.toString() : null,
+      documentType: r.documentType,
+      status: r.status,
+      needsManualReview: r.needsManualReview,
+      invoiceId: r.invoice?.id ?? null,
+      canRequeueAi: isDocumentEligibleForAiRequeue({
+        status: r.status,
+        documentType: r.documentType,
+        invoice: r.invoice,
+        paymentProof: r.paymentProof,
+      }),
+      canDeleteDocument: canRunJobs && r.status !== "APPROVED",
+      canConfirmPayment: canRunJobs && caps.canConfirmPayment,
+    };
+  });
 
   return (
     <div className="space-y-4">

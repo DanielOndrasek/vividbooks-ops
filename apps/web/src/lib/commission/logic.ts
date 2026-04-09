@@ -584,6 +584,91 @@ export function sumValuesByCurrency(deals: DealDict[]): Record<string, number> {
   return acc;
 }
 
+/** Výnos = všichni won v měsíci: součet value po obchodníkovi a měně (sales controlling). */
+export function aggregateWonRevenueByOwnerAndCurrency(
+  wonMonthDeals: DealDict[],
+  userMap: Record<number, string>,
+): {
+  wonRevenueByOwner: Array<{
+    ownerLabel: string;
+    dealCount: number;
+    byCurrency: Record<string, number>;
+  }>;
+  wonRevenueTeamByCurrency: Record<string, number>;
+} {
+  const perOwner = new Map<
+    string,
+    { byCurrency: Record<string, number>; dealCount: number }
+  >();
+  const team: Record<string, number> = {};
+  for (const deal of wonMonthDeals) {
+    const owner = dealOwnerDisplay(deal, userMap) || "Neznámý";
+    const ccy = dealCurrency(deal) || "—";
+    const val = dealMonetaryValue(deal);
+    if (!perOwner.has(owner)) {
+      perOwner.set(owner, { byCurrency: {}, dealCount: 0 });
+    }
+    const o = perOwner.get(owner)!;
+    o.dealCount += 1;
+    o.byCurrency[ccy] = (o.byCurrency[ccy] ?? 0) + val;
+    team[ccy] = (team[ccy] ?? 0) + val;
+  }
+  const wonRevenueByOwner = Array.from(perOwner.entries())
+    .map(([ownerLabel, v]) => ({
+      ownerLabel,
+      dealCount: v.dealCount,
+      byCurrency: v.byCurrency,
+    }))
+    .sort((a, b) => a.ownerLabel.localeCompare(b.ownerLabel, "cs"));
+  return { wonRevenueByOwner, wonRevenueTeamByCurrency: team };
+}
+
+/** Započtené provize a hodnoty dealů po obchodníkovi a měně. */
+export function aggregateCommissionByOwnerAndCurrency(rows: DealCommissionRow[]): {
+  commissionByOwner: Array<{
+    ownerLabel: string;
+    dealCount: number;
+    byCurrency: Record<string, { commission: number; value: number }>;
+  }>;
+  commissionTeamByCurrency: Record<string, { commission: number; value: number }>;
+} {
+  const perOwner = new Map<
+    string,
+    {
+      byCurrency: Record<string, { commission: number; value: number }>;
+      dealCount: number;
+    }
+  >();
+  const team: Record<string, { commission: number; value: number }> = {};
+  for (const r of rows) {
+    const owner = r.owner_name || "Neznámý";
+    const ccy = r.currency || "—";
+    if (!perOwner.has(owner)) {
+      perOwner.set(owner, { byCurrency: {}, dealCount: 0 });
+    }
+    const o = perOwner.get(owner)!;
+    o.dealCount += 1;
+    if (!o.byCurrency[ccy]) {
+      o.byCurrency[ccy] = { commission: 0, value: 0 };
+    }
+    o.byCurrency[ccy].commission += r.commission;
+    o.byCurrency[ccy].value += r.value;
+    if (!team[ccy]) {
+      team[ccy] = { commission: 0, value: 0 };
+    }
+    team[ccy].commission += r.commission;
+    team[ccy].value += r.value;
+  }
+  const commissionByOwner = Array.from(perOwner.entries())
+    .map(([ownerLabel, v]) => ({
+      ownerLabel,
+      dealCount: v.dealCount,
+      byCurrency: v.byCurrency,
+    }))
+    .sort((a, b) => a.ownerLabel.localeCompare(b.ownerLabel, "cs"));
+  return { commissionByOwner, commissionTeamByCurrency: team };
+}
+
 function dealCategoryDisplayForExclusion(
   deal: DealDict,
   categoryFieldKey: string,

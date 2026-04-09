@@ -35,6 +35,7 @@ type Busy =
   | { kind: "delete"; documentId: string }
   | { kind: "bulk-approve" }
   | { kind: "bulk-convert" }
+  | { kind: "bulk-delete" }
   | null;
 
 export function InvoicesListTable({ rows, canAct }: Props) {
@@ -45,11 +46,18 @@ export function InvoicesListTable({ rows, canAct }: Props) {
 
   const selectableIds = useMemo(
     () =>
-      rows.filter((r) => r.canApprove || r.canConvertToPayment).map((r) => r.id),
+      rows
+        .filter(
+          (r) => r.canApprove || r.canConvertToPayment || r.canDeleteDocument,
+        )
+        .map((r) => r.id),
     [rows],
   );
 
-  const bulkBusy = busy?.kind === "bulk-approve" || busy?.kind === "bulk-convert";
+  const bulkBusy =
+    busy?.kind === "bulk-approve" ||
+    busy?.kind === "bulk-convert" ||
+    busy?.kind === "bulk-delete";
 
   const toggle = useCallback((id: string) => {
     setSelected((prev) => {
@@ -100,6 +108,17 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       const row = rows.find((r) => r.id === id);
       if (row?.canConvertToPayment) {
         list.push(id);
+      }
+    }
+    return list;
+  }, [selected, rows]);
+
+  const selectedDeletableDocumentIds = useMemo(() => {
+    const list: string[] = [];
+    for (const id of selected) {
+      const row = rows.find((r) => r.id === id);
+      if (row?.canDeleteDocument) {
+        list.push(row.documentId);
       }
     }
     return list;
@@ -304,18 +323,63 @@ export function InvoicesListTable({ rows, canAct }: Props) {
     }
   }
 
+  async function deleteBulk() {
+    if (selectedDeletableDocumentIds.length === 0) {
+      return;
+    }
+    const n = selectedDeletableDocumentIds.length;
+    if (
+      !window.confirm(
+        `Trvale smazat ${n} dokladů včetně souvisejících faktur v databázi? Soubory na Drive se tím nesmažou.`,
+      )
+    ) {
+      return;
+    }
+    setBusy({ kind: "bulk-delete" });
+    setMessage(null);
+    try {
+      const res = await fetch("/api/documents/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds: selectedDeletableDocumentIds }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        deleted?: number;
+        failed?: number;
+        results?: { documentId: string; ok: boolean; error?: string }[];
+      };
+      if (!res.ok) {
+        setMessage(data.error || `Chyba ${res.status}`);
+        return;
+      }
+      const parts = [
+        `Smazáno: ${data.deleted ?? 0}, neúspěch: ${data.failed ?? 0}.`,
+      ];
+      const errs = data.results?.filter((x) => !x.ok) ?? [];
+      if (errs.length > 0 && errs.length <= 5) {
+        for (const e of errs) {
+          parts.push(`${e.documentId.slice(0, 8)}…: ${e.error ?? "?"}`);
+        }
+      } else if (errs.length > 5) {
+        parts.push(`${errs.length} chyb — zkontrolujte auditní log.`);
+      }
+      setMessage(parts.join(" "));
+      setSelected(new Set());
+      await router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const rowDisabled = busy !== null;
 
   return (
     <div className="space-y-3">
-      {canAct && selectableIds.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-md border bg-card/50 p-4">
-          <p className="text-muted-foreground text-sm">
-            Zaškrtněte řádky a použijte hromadné schválení, nebo hromadný převod na doklad platby (špatná
-            klasifikace AI). U řádku lze také smazat celý doklad (kromě schválených). Checkbox je u položek,
-            které lze schválit nebo převést.
-          </p>
-          <div className="flex flex-wrap gap-2">
+      {canAct && selected.size > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+          {selectedApprovable.length > 0 && (
             <Button
               type="button"
               variant="default"
@@ -331,6 +395,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                 `Schválit vybrané (${selectedApprovable.length})`
               )}
             </Button>
+          )}
+          {selectedConvertible.length > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -346,7 +412,24 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                 `Na doklad platby (${selectedConvertible.length})`
               )}
             </Button>
-          </div>
+          )}
+          {selectedDeletableDocumentIds.length > 0 && (
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={bulkBusy || selectedDeletableDocumentIds.length === 0}
+              onClick={() => void deleteBulk()}
+            >
+              {busy?.kind === "bulk-delete" ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Mažu…
+                </>
+              ) : (
+                `Smazat vybrané (${selectedDeletableDocumentIds.length})`
+              )}
+            </Button>
+          )}
         </div>
       )}
       {message && (
@@ -364,7 +447,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                     checked={allSelectableSelected}
                     disabled={selectableIds.length === 0}
                     onChange={() => toggleAllSelectable()}
-                    title="Vybrat všechny řádky vhodné ke schválení nebo převodu na platbu"
+                    title="Vybrat všechny řádky vhodné ke schválení, převodu nebo smazání"
                     aria-label="Vybrat vše na stránce"
                   />
                 </th>
@@ -392,7 +475,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
               >
                 {canAct && (
                   <td className="p-3 align-middle">
-                    {inv.canApprove || inv.canConvertToPayment ? (
+                    {inv.canApprove || inv.canConvertToPayment || inv.canDeleteDocument ? (
                       <input
                         type="checkbox"
                         className="accent-primary h-4 w-4 cursor-pointer"

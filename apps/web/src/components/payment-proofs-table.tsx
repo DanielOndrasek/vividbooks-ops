@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +11,8 @@ export type PaymentProofRowDto = {
   proofType: string | null;
   note: string | null;
   driveUrl: string | null;
+  /** Hromadné / jednotlivé smazání evidence (nelze, pokud existuje faktura u stejného dokumentu). */
+  canDeleteProof: boolean;
   /** Pro řazení podle data přijetí e-mailu (UTC timestamp). */
   receivedAtMs: number;
   receivedAtLabel: string;
@@ -31,6 +33,8 @@ type ReceivedSort = "desc" | "asc";
 export function PaymentProofsTable({ rows, canAct }: Props) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [receivedSort, setReceivedSort] = useState<ReceivedSort>("desc");
 
@@ -44,9 +48,62 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
     return copy;
   }, [rows, receivedSort]);
 
+  const deletableProofIds = useMemo(
+    () => sortedRows.filter((p) => p.canDeleteProof).map((p) => p.id),
+    [sortedRows],
+  );
+
+  const toggle = useCallback((proofId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(proofId)) {
+        next.delete(proofId);
+      } else {
+        next.add(proofId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllDeletable = useCallback(() => {
+    if (deletableProofIds.length === 0) {
+      return;
+    }
+    setSelected((prev) => {
+      const allOn = deletableProofIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allOn) {
+        for (const id of deletableProofIds) {
+          next.delete(id);
+        }
+      } else {
+        for (const id of deletableProofIds) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
+  }, [deletableProofIds]);
+
+  const selectedDeletableProofIds = useMemo(() => {
+    const list: string[] = [];
+    for (const id of selected) {
+      if (deletableProofIds.includes(id)) {
+        list.push(id);
+      }
+    }
+    return list;
+  }, [selected, deletableProofIds]);
+
+  const allDeletableSelected =
+    deletableProofIds.length > 0 &&
+    deletableProofIds.every((id) => selected.has(id));
+
   function toggleReceivedSort() {
     setReceivedSort((s) => (s === "desc" ? "asc" : "desc"));
   }
+
+  const rowBusyGlobal = bulkDeleting || busyId !== null;
 
   async function retryDriveUpload(proofId: string) {
     setBusyId(proofId);
@@ -99,14 +156,83 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Evidence platby byla odstraněna.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(proofId);
+        return next;
+      });
       router.refresh();
     } finally {
       setBusyId(null);
     }
   }
 
+  async function deleteBulk() {
+    if (selectedDeletableProofIds.length === 0) {
+      return;
+    }
+    const n = selectedDeletableProofIds.length;
+    if (
+      !window.confirm(
+        `Smazat evidenci u ${n} vybraných plateb? Doklady v systému zůstanou jako zamítnuté (bez vazby na platbu), pokud u nich není faktura.`,
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/payment-proofs/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proofIds: selectedDeletableProofIds }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        deleted?: number;
+        failed?: number;
+        results?: { proofId: string; ok: boolean; error?: string }[];
+      };
+      if (!res.ok) {
+        setMessage(data.error ?? `Chyba ${res.status}`);
+        return;
+      }
+      const parts = [
+        `Smazáno: ${data.deleted ?? 0}, neúspěch: ${data.failed ?? 0}.`,
+      ];
+      const errs = data.results?.filter((x) => !x.ok) ?? [];
+      if (errs.length > 0 && errs.length <= 5) {
+        for (const e of errs) {
+          parts.push(`${e.proofId.slice(0, 8)}…: ${e.error ?? "?"}`);
+        }
+      } else if (errs.length > 5) {
+        parts.push(`${errs.length} chyb — zkontrolujte stav řádků.`);
+      }
+      setMessage(parts.join(" "));
+      setSelected(new Set());
+      router.refresh();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {canAct && selected.size > 0 && selectedDeletableProofIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={bulkDeleting}
+            onClick={() => void deleteBulk()}
+          >
+            {bulkDeleting
+              ? "Mažu…"
+              : `Smazat vybrané (${selectedDeletableProofIds.length})`}
+          </Button>
+        </div>
+      )}
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
@@ -114,6 +240,19 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
+              {canAct && (
+                <th className="w-10 p-3">
+                  <input
+                    type="checkbox"
+                    className="accent-primary h-4 w-4 cursor-pointer"
+                    checked={allDeletableSelected}
+                    disabled={deletableProofIds.length === 0 || bulkDeleting}
+                    onChange={() => toggleAllDeletable()}
+                    title="Vybrat všechny řádky, u kterých lze smazat evidenci platby"
+                    aria-label="Vybrat vše ke smazání evidence"
+                  />
+                </th>
+              )}
               <th className="p-3 font-medium">Typ / pozn.</th>
               <th className="p-3 font-medium">
                 <button
@@ -148,6 +287,22 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
               const b = busyId === p.id;
               return (
                 <tr key={p.id} className="border-b last:border-0">
+                  {canAct && (
+                    <td className="p-3 align-middle">
+                      {p.canDeleteProof ? (
+                        <input
+                          type="checkbox"
+                          className="accent-primary h-4 w-4 cursor-pointer"
+                          checked={selected.has(p.id)}
+                          onChange={() => toggle(p.id)}
+                          disabled={bulkDeleting}
+                          aria-label={`Vybrat platbu ${p.id}`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="max-w-[200px] p-3">
                     <div className="font-medium">{p.proofType || "—"}</div>
                     {p.note && (
@@ -201,23 +356,25 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
                             type="button"
                             size="xs"
                             variant="secondary"
-                            disabled={b}
+                            disabled={rowBusyGlobal}
                             onClick={() => void retryDriveUpload(p.id)}
                             className="shrink-0"
                           >
                             {b ? "…" : "Nahrát na Drive"}
                           </Button>
                         )}
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="destructive"
-                          disabled={b}
-                          onClick={() => void deleteProof(p.id)}
-                          className="shrink-0"
-                        >
-                          {b ? "…" : "Smazat platbu"}
-                        </Button>
+                        {p.canDeleteProof && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="destructive"
+                            disabled={rowBusyGlobal}
+                            onClick={() => void deleteProof(p.id)}
+                            className="shrink-0"
+                          >
+                            {b ? "…" : "Smazat platbu"}
+                          </Button>
+                        )}
                       </div>
                     </td>
                   )}

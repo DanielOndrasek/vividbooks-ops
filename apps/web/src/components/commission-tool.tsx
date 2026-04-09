@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -57,8 +57,53 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
   const [year, setYear] = useState(def.year);
   const [month, setMonth] = useState(def.month);
   const [loading, setLoading] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    if (!pipedriveConfigured) {
+      return;
+    }
+    const ac = new AbortController();
+    setSnapshotLoading(true);
+    setData(null);
+    setError(null);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/commission/snapshot?year=${year}&month=${month}`,
+          { signal: ac.signal, cache: "no-store" },
+        );
+        if (ac.signal.aborted) {
+          return;
+        }
+        if (res.status === 404) {
+          setData(null);
+          return;
+        }
+        if (!res.ok) {
+          const j = (await res.json()) as { error?: string };
+          setError(j.error || `Načtení uloženého měsíce selhalo (${res.status})`);
+          setData(null);
+          return;
+        }
+        const j = (await res.json()) as Record<string, unknown>;
+        setData(j);
+      } catch (e) {
+        if (ac.signal.aborted) {
+          return;
+        }
+        setError(e instanceof Error ? e.message : String(e));
+        setData(null);
+      } finally {
+        if (!ac.signal.aborted) {
+          setSnapshotLoading(false);
+        }
+      }
+    })();
+    return () => ac.abort();
+  }, [pipedriveConfigured, year, month]);
 
   async function run() {
     setLoading(true);
@@ -108,6 +153,13 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
     0,
   );
 
+  const persisted = data?.persisted as
+    | { computedAt?: string; snapshotId?: string }
+    | undefined;
+  const persistedLabel = persisted?.computedAt
+    ? new Date(persisted.computedAt).toLocaleString("cs-CZ")
+    : null;
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end gap-4 rounded-lg border bg-card p-4">
@@ -136,10 +188,14 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
             ))}
           </select>
         </label>
-        <Button type="button" disabled={loading} onClick={() => void run()}>
-          {loading ? "Počítám…" : "Spočítat provize"}
+        <Button type="button" disabled={loading || snapshotLoading} onClick={() => void run()}>
+          {loading ? "Počítám…" : "Spočítat provize (Pipedrive)"}
         </Button>
       </div>
+
+      {snapshotLoading && !data && !loading && (
+        <p className="text-muted-foreground text-sm">Načítám uložený výpočet…</p>
+      )}
 
       {error && (
         <p className="text-destructive text-sm" role="alert">
@@ -147,8 +203,23 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
         </p>
       )}
 
+      {!snapshotLoading && !data && !error && (
+        <p className="text-muted-foreground rounded-md border border-dashed p-3 text-sm">
+          Pro <strong>
+            {year}-{String(month).padStart(2, "0")}
+          </strong>{" "}
+          zatím není v databázi uložený výpočet. Klikni na <strong>Spočítat provize</strong> — výsledek se
+          uloží a při příštím otevření měsíce se načte automaticky.
+        </p>
+      )}
+
       {data && (
         <>
+          {persistedLabel && (
+            <p className="text-muted-foreground rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <strong>Uloženo v databázi</strong> — naposledy přepočteno: {persistedLabel}
+            </p>
+          )}
           <p className="text-muted-foreground text-sm">
             Měsíc <strong>{year}-{String(month).padStart(2, "0")}</strong> podle{" "}
             <code>won_time</code>. Won v měsíci:{" "}

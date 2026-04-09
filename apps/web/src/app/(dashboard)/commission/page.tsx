@@ -12,7 +12,9 @@ export default async function CommissionPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Provize (Pipedrive)</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Won dealy v kalendářním měsíci podle <code>won_time</code>. Pravidla jsou v kódu (
-          <code>src/lib/commission/rules.ts</code>) — stejná logika jako dříve ve Streamlitu.
+          <code>src/lib/commission/rules.ts</code>) — stejná logika jako dříve ve Streamlitu. Po výpočtu se
+          výsledek <strong>uloží do databáze</strong> a při příštím výběru měsíce se načte bez nového stažení z
+          Pipedrive (přepočet: znovu „Spočítat provize“).
         </p>
       </div>
       <CommissionTool pipedriveConfigured={pd.configured} />

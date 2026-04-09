@@ -50,10 +50,40 @@ model User {
   role          UserRole  @default(VIEWER)
   createdAt     DateTime  @default(now())
 
-  accounts         Account[]
-  sessions         Session[]
-  auditLogs        AuditLog[]
-  approvedInvoices Invoice[] @relation("InvoiceApprovedBy")
+  accounts                Account[]
+  sessions                Session[]
+  auditLogs               AuditLog[]
+  approvedInvoices        Invoice[]                  @relation("InvoiceApprovedBy")
+  commissionSnapshots     CommissionMonthSnapshot[]
+}
+
+/// Uložený výsledek výpočtu provizí za kalendářní měsíc (jeden záznam na year+month).
+model CommissionMonthSnapshot {
+  id                 String   @id @default(cuid())
+  year               Int
+  month              Int
+  computedAt         DateTime @default(now())
+  computedByUserId   String?
+  computedBy         User?    @relation(fields: [computedByUserId], references: [id], onDelete: SetNull)
+  payload            Json
+
+  @@unique([year, month])
+  @@index([year])
+}
+
+/// Měsíční fixní odměna obchodníka (shoda `ownerLabel` s jménem z Pipedrive / provizí).
+model SalesPersonMonthlyFixed {
+  id         String   @id @default(cuid())
+  ownerLabel String
+  amount     Decimal  @db.Decimal(12, 2)
+  currency   String   @default("CZK")
+  note       String?  @db.Text
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+  @@index([ownerLabel])
 }
 
 model Account {

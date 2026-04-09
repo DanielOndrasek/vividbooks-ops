@@ -16,7 +16,7 @@ export default async function PaymentProofsPage() {
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {
-      document: { include: { email: true } },
+      document: { include: { email: true, invoice: { select: { id: true } } } },
     },
   });
 
@@ -26,6 +26,7 @@ export default async function PaymentProofsPage() {
     proofType: p.proofType,
     note: p.note,
     driveUrl: p.driveUrl,
+    canDeleteProof: p.document.invoice == null,
     receivedAtMs: p.document.email.receivedAt.getTime(),
     receivedAtLabel: p.document.email.receivedAt.toLocaleString("cs-CZ"),
     processedAtLabel: p.document.email.processedAt?.toLocaleString("cs-CZ") ?? null,

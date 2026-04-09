@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { CollapsibleFilters } from "@/components/collapsible-filters";
 import {
   InvoicesListTable,
   type InvoiceListRowDto,
@@ -114,61 +115,60 @@ export default async function InvoicesPage({ searchParams }: Props) {
     };
   });
 
+  const filtersActive = Boolean(q || (sp.status && sp.status.length > 0));
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Faktury ke schválení</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Stejná logika tabulky jako u dokladů: sloupce Přijato, Dodavatel, Částka, Typ, Stav, Kontrola, Odkaz
-          (Detail + soubor přílohy). Řádky vyžadující kontrolu jsou zvýrazněné. Fulltext: dodavatel, č. faktury,
-          název souboru.
-          {canAct
-            ? " Jako schvalovatel můžete schválit ze seznamu, hromadně, převést položku na doklad platby, nebo smazat doklad (kromě schválených) ve sloupci Záznam."
-            : null}
-        </p>
       </div>
 
-      <form
-        method="get"
-        className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4 text-sm"
+      <CollapsibleFilters
+        defaultOpen={filtersActive}
+        summary="Vyhledávání a filtry"
       >
-        <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-          <label className="text-muted-foreground text-xs">Fulltext</label>
-          <input
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="Dodavatel, soubor, č. faktury…"
-            className="border-input bg-background rounded-md border px-3 py-2"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-xs">Stav</label>
-          <select
-            name="status"
-            defaultValue={sp.status ?? ""}
-            className="border-input bg-background rounded-md border px-3 py-2"
-          >
-            <option value="">Všechny</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-xs">Řazení</label>
-          <select
-            name="sort"
-            defaultValue={sort}
-            className="border-input bg-background rounded-md border px-3 py-2"
-          >
-            <option value="receivedAt">Datum přijetí ↓</option>
-            <option value="dueDate">Splatnost ↑</option>
-          </select>
-        </div>
-        <Button type="submit">Použít</Button>
-      </form>
+        <form
+          method="get"
+          className="flex flex-wrap items-end gap-3 border-t p-4 text-sm"
+        >
+          <div className="flex min-w-[200px] flex-1 flex-col gap-1">
+            <label className="text-muted-foreground text-xs">Fulltext</label>
+            <input
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Dodavatel, soubor, č. faktury…"
+              className="border-input bg-background rounded-md border px-3 py-2"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-muted-foreground text-xs">Stav</label>
+            <select
+              name="status"
+              defaultValue={sp.status ?? ""}
+              className="border-input bg-background rounded-md border px-3 py-2"
+            >
+              <option value="">Všechny</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-muted-foreground text-xs">Řazení</label>
+            <select
+              name="sort"
+              defaultValue={sort}
+              className="border-input bg-background rounded-md border px-3 py-2"
+            >
+              <option value="receivedAt">Datum přijetí ↓</option>
+              <option value="dueDate">Splatnost ↑</option>
+            </select>
+          </div>
+          <Button type="submit">Použít</Button>
+        </form>
+      </CollapsibleFilters>
 
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">Žádné záznamy.</p>

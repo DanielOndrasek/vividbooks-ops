@@ -12,8 +12,8 @@ ops_url = cfg.app_url.rstrip("/")
 st.title("Vividbooks Operations Space")
 st.markdown(
     "Interní provozní nástroje. **Hlavní aplikace** je jedna webová appka (Next.js na Vercelu): "
-    "doklady z Gmailu, schvalování faktur, platby na Drive, výpočet provizí z Pipedrive a "
-    "sjednocené **Nastavení** všech API klíčů."
+    "doklady z Gmailu, schvalování faktur, platby na Drive, výpočet provizí z Pipedrive, "
+    "**Sales controlling** (`/sales-controlling`) a sjednocené **Nastavení** všech API klíčů."
 )
 
 st.link_button("Otevřít Vividbooks Ops (web)", ops_url, type="primary", use_container_width=False)
@@ -28,5 +28,6 @@ st.info(
 st.subheader("Dostupné nástroje (Streamlit)")
 st.markdown(
     "- **Provize (Pipedrive)** — měsíční výpočet (Python); v webu: `/commission`.\n"
+    "- **Sales controlling** — jen v webu: `/sales-controlling`.\n"
     "- **Nastavení integrací** — přehled Pipedrive ze `.env`; v webu: `/settings` (Gmail, Drive, Claude, …).\n"
 )

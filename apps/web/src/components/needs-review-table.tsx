@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +32,59 @@ type Props = {
 export function NeedsReviewTable({ rows, canAct }: Props) {
   const router = useRouter();
   const [busyDoc, setBusyDoc] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
+
+  const deletableIds = useMemo(
+    () => rows.filter((r) => r.canDeleteDocument).map((r) => r.documentId),
+    [rows],
+  );
+
+  const toggle = useCallback((documentId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(documentId)) {
+        next.delete(documentId);
+      } else {
+        next.add(documentId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllDeletable = useCallback(() => {
+    if (deletableIds.length === 0) {
+      return;
+    }
+    setSelected((prev) => {
+      const allOn = deletableIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allOn) {
+        for (const id of deletableIds) {
+          next.delete(id);
+        }
+      } else {
+        for (const id of deletableIds) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
+  }, [deletableIds]);
+
+  const selectedDeletable = useMemo(() => {
+    const list: string[] = [];
+    for (const id of selected) {
+      if (deletableIds.includes(id)) {
+        list.push(id);
+      }
+    }
+    return list;
+  }, [selected, deletableIds]);
+
+  const allDeletableSelected =
+    deletableIds.length > 0 && deletableIds.every((id) => selected.has(id));
 
   async function callResolve(
     documentId: string,
@@ -54,6 +106,11 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Uloženo.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
       await router.refresh();
     } finally {
       setBusyDoc(null);
@@ -81,9 +138,64 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return;
       }
       setMessage("Doklad byl smazán.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
       await router.refresh();
     } finally {
       setBusyDoc(null);
+    }
+  }
+
+  async function deleteBulk() {
+    if (selectedDeletable.length === 0) {
+      return;
+    }
+    const n = selectedDeletable.length;
+    if (
+      !window.confirm(
+        `Trvale smazat ${n} dokladů včetně souvisejících faktur nebo evidence plateb v databázi? Soubory na Google Drive se tím nesmažou.`,
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/documents/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds: selectedDeletable }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        deleted?: number;
+        failed?: number;
+        results?: { documentId: string; ok: boolean; error?: string }[];
+      };
+      if (!res.ok) {
+        setMessage(data.error || `Chyba ${res.status}`);
+        return;
+      }
+      const parts = [
+        `Smazáno: ${data.deleted ?? 0}, neúspěch: ${data.failed ?? 0}.`,
+      ];
+      const errs = data.results?.filter((x) => !x.ok) ?? [];
+      if (errs.length > 0 && errs.length <= 5) {
+        for (const e of errs) {
+          parts.push(`${e.documentId.slice(0, 8)}…: ${e.error ?? "?"}`);
+        }
+      } else if (errs.length > 5) {
+        parts.push(`${errs.length} chyb — zkontrolujte auditní log.`);
+      }
+      setMessage(parts.join(" "));
+      setSelected(new Set());
+      await router.refresh();
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -112,6 +224,20 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
 
   return (
     <div className="space-y-3">
+      {canAct && selected.size > 0 && selectedDeletable.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={bulkDeleting}
+            onClick={() => void deleteBulk()}
+          >
+            {bulkDeleting
+              ? "Mažu…"
+              : `Smazat vybrané (${selectedDeletable.length})`}
+          </Button>
+        </div>
+      )}
       {message && (
         <p className="text-muted-foreground text-sm whitespace-pre-wrap">{message}</p>
       )}
@@ -119,6 +245,19 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
+              {canAct && (
+                <th className="w-10 p-3">
+                  <input
+                    type="checkbox"
+                    className="accent-primary h-4 w-4 cursor-pointer"
+                    checked={allDeletableSelected}
+                    disabled={deletableIds.length === 0}
+                    onChange={() => toggleAllDeletable()}
+                    title="Vybrat všechny doklady, které lze smazat"
+                    aria-label="Vybrat vše ke smazání"
+                  />
+                </th>
+              )}
               <th className="p-3 font-medium">Přijato</th>
               <th className="p-3 font-medium">Typ</th>
               <th className="p-3 font-medium">Stav</th>
@@ -130,9 +269,28 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
           </thead>
           <tbody>
             {rows.map((d) => {
-              const b = busyDoc === d.documentId || busyDoc === `inv:${d.invoiceId ?? ""}`;
+              const b =
+                bulkDeleting ||
+                busyDoc === d.documentId ||
+                busyDoc === `inv:${d.invoiceId ?? ""}`;
               return (
                 <tr key={d.documentId} className="border-b last:border-0">
+                  {canAct && (
+                    <td className="p-3 align-middle">
+                      {d.canDeleteDocument ? (
+                        <input
+                          type="checkbox"
+                          className="accent-primary h-4 w-4 cursor-pointer"
+                          checked={selected.has(d.documentId)}
+                          onChange={() => toggle(d.documentId)}
+                          disabled={bulkDeleting}
+                          aria-label={`Vybrat doklad ${d.documentId}`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="text-muted-foreground whitespace-nowrap p-3">
                     {d.receivedAtLabel}
                   </td>

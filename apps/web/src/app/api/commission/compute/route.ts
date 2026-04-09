@@ -4,6 +4,8 @@ import { z } from "zod";
 import { requireSession } from "@/lib/api-session";
 import {
   aggregateByOwner,
+  aggregateCommissionByOwnerAndCurrency,
+  aggregateWonRevenueByOwnerAndCurrency,
   buildCategoryOptionMap,
   buildFullMonthExportRows,
   buildValueDiagnostics,
@@ -15,6 +17,7 @@ import {
 } from "@/lib/commission/logic";
 import { COMMISSION_RULES } from "@/lib/commission/rules";
 import { getPipedriveEnv } from "@/lib/integrations/env";
+import { prisma } from "@/lib/prisma";
 import { PipedriveClient } from "@/lib/pipedrive/client";
 
 export const dynamic = "force-dynamic";
@@ -30,8 +33,7 @@ export async function POST(req: NextRequest) {
   if (response) {
     return response;
   }
-  void session;
-
+  const sess = session!;
   const pd = getPipedriveEnv();
   if (!pd.configured) {
     return NextResponse.json(
@@ -118,7 +120,13 @@ export async function POST(req: NextRequest) {
       userMap,
     );
 
-    return NextResponse.json({
+    const { wonRevenueByOwner, wonRevenueTeamByCurrency } =
+      aggregateWonRevenueByOwnerAndCurrency(wonMonth, userMap);
+    const { commissionByOwner, commissionTeamByCurrency } =
+      aggregateCommissionByOwnerAndCurrency(rows);
+
+    const computedAtIso = new Date().toISOString();
+    const responseBody: Record<string, unknown> = {
       meta: { year, month },
       rows,
       aggregate: aggregateByOwner(rows),
@@ -130,7 +138,34 @@ export async function POST(req: NextRequest) {
         optionMapSize: Object.keys(optionMap).length,
         dealsLoaded: deals.length,
       },
+      wonRevenueByOwner,
+      wonRevenueTeamByCurrency,
+      commissionByOwner,
+      commissionTeamByCurrency,
+      persisted: {
+        computedAt: computedAtIso,
+        computedByUserId: sess.user.id,
+      },
+    };
+
+    await prisma.commissionMonthSnapshot.upsert({
+      where: {
+        year_month: { year, month },
+      },
+      create: {
+        year,
+        month,
+        computedByUserId: sess.user.id,
+        payload: responseBody as object,
+      },
+      update: {
+        computedAt: new Date(),
+        computedByUserId: sess.user.id,
+        payload: responseBody as object,
+      },
     });
+
+    return NextResponse.json(responseBody);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[commission/compute]", msg);

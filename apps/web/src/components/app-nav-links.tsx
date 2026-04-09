@@ -12,6 +12,7 @@ const links = [
   { href: "/needs-review", label: "Ke kontrole" },
   { href: "/documents", label: "Doklady" },
   { href: "/commission", label: "Provize" },
+  { href: "/sales-controlling", label: "Sales controlling" },
   { href: "/audit-log", label: "Audit" },
   { href: "/settings", label: "Nastavení" },
 ] as const;
