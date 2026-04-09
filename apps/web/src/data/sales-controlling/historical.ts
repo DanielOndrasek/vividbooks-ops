@@ -11,8 +11,8 @@ function emptyYearMonths(): SalesControllingYearBundle["months"] {
 }
 
 /**
- * Statická historie 2023–2025 (stejná struktura jako výpočet z DB od roku 2026).
- * Zatím prázdné měsíce — čísla doplníš přímo zde podle tabulek.
+ * Ruční doplnění 2023–2025, kde v DB ještě není uložený výpočet z nástroje Provize.
+ * Po přepočtu měsíce v Provizích (Pipedrive) má Sales controlling přednost z DB; tento soubor platí jen pro mezery.
  */
 export const HISTORICAL_SALES_YEARS: Partial<
   Record<2023 | 2024 | 2025, SalesControllingYearBundle>

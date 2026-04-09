@@ -187,8 +187,9 @@ export function SalesControllingOverview({ bundle, yearTotals, yearRatio }: Prop
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Přehled a grafy</h2>
           <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-            Metriky podle měny — nesčítáme různé měny dohromady. Grafy používají týmová data (won + provize + fixy) z
-            měsíčního přehledu.
+            Metriky podle měny — nesčítáme různé měny dohromady. Grafy používají týmová data z každého měsíce (včetně měsíců
+            jen s fixy). <strong>Roční KPI</strong> odpovídají tabulce „Roční souhrn“ — započítávají jen měsíce s načtenými
+            provizemi, ne prázdné měsíce pouze s fixními náklady.
           </p>
         </div>
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Měna pro grafy">

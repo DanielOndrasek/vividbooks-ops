@@ -295,7 +295,7 @@ export function SalesControllingClient({
         title="Roční souhrn (tým)"
         description={
           <>
-            Součty z měsíců s daty (u roku od 2026 typicky jen měsíce s uloženým výpočtem provizí). Sloupec{" "}
+            Součty jen z měsíců, kde jsou načtené provize (uložený výpočet / vyplněná historie). Fixní náklady se do ročního součtu započítají jen v těchto měsících — měsíce „jen fix“ bez provizí v souhrnu nejsou. Sloupec{" "}
             <strong>Celkem náklady</strong> = provize + fix. Buňka <strong>Nákl./výnos</strong> je zvýrazněná červeně nad
             30 %.
           </>

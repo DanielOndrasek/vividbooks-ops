@@ -248,37 +248,69 @@ export function emptyMonthBlock(month: number): MonthControllingBlock {
   };
 }
 
-export function buildYearBundleFromSnapshots(
+/**
+ * Sales controlling pro libovolný kalendářní rok: měsíce z DB snapshotů (nástroj Provize), jinak volitelně
+ * ruční řádky ze `staticTemplate` (historie v `historical.ts`), jinak jen fixní náklady.
+ */
+export function buildSalesControllingYearBundle(
   year: number,
   snapshots: { month: number; payload: unknown }[],
   fixedRows: FixedRow[],
+  staticTemplate: SalesControllingYearBundle | null,
 ): SalesControllingYearBundle {
   const byMonth = new Map<number, Record<string, unknown>>();
   for (const s of snapshots) {
     byMonth.set(s.month, s.payload as Record<string, unknown>);
   }
+  const staticMonths = staticTemplate?.months ?? null;
 
   const months: MonthControllingBlock[] = [];
   for (let m = 1; m <= 12; m++) {
     const payload = byMonth.get(m);
-    if (!payload) {
-      months.push(buildMonthFromFixedCostsOnly(m, fixedRows));
+    if (payload) {
+      const built = buildMonthFromSnapshotPayload(payload, fixedRows);
+      months.push({
+        month: m,
+        missingSnapshot: false,
+        ...built,
+      });
       continue;
     }
-    const built = buildMonthFromSnapshotPayload(payload, fixedRows);
-    months.push({
-      month: m,
-      missingSnapshot: false,
-      ...built,
-    });
+
+    const sm = staticMonths?.[m - 1];
+    const hasStatic =
+      sm != null &&
+      (Object.keys(sm.teamByCurrency).length > 0 || sm.owners.length > 0);
+    if (hasStatic) {
+      months.push(mergeFixedIntoHistoricalMonth(sm, fixedRows));
+      continue;
+    }
+
+    months.push(buildMonthFromFixedCostsOnly(m, fixedRows));
   }
 
-  return { year, source: "database", months };
+  const source =
+    snapshots.length > 0 || year >= 2026 ? ("database" as const) : ("static" as const);
+
+  return { year, source, months };
 }
 
+/** Rok jen z DB snapshotů (bez ruční historie) — např. 2026+ nebo testy. */
+export function buildYearBundleFromSnapshots(
+  year: number,
+  snapshots: { month: number; payload: unknown }[],
+  fixedRows: FixedRow[],
+): SalesControllingYearBundle {
+  return buildSalesControllingYearBundle(year, snapshots, fixedRows, null);
+}
+
+/** Roční součty jen z měsíců s načtenými provizemi (`missingSnapshot === false`). Měsíce jen s fixy bez snapshotu se do souhrnu nepočítají. */
 export function sumYearTotals(months: MonthControllingBlock[]): YearTotalsByCurrency {
   const acc: YearTotalsByCurrency = {};
   for (const mo of months) {
+    if (mo.missingSnapshot) {
+      continue;
+    }
     if (Object.keys(mo.teamByCurrency).length === 0) {
       continue;
     }

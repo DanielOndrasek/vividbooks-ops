@@ -6,9 +6,8 @@ import {
 import { getHistoricalYearBundle } from "@/data/sales-controlling/historical";
 import { prisma } from "@/lib/prisma";
 import {
-  buildYearBundleFromSnapshots,
+  buildSalesControllingYearBundle,
   emptyMonthBlock,
-  enrichStaticBundleWithFixedCosts,
   sumYearTotals,
 } from "@/lib/sales-controlling/metrics";
 import type { SalesControllingYearBundle } from "@/lib/sales-controlling/types";
@@ -48,24 +47,22 @@ export default async function SalesControllingPage({ searchParams }: Props) {
     active: f.active,
   }));
 
-  let bundle;
-  if (year >= 2026) {
-    const snapshots = await prisma.commissionMonthSnapshot.findMany({
-      where: { year },
-      orderBy: { month: "asc" },
-      select: { month: true, payload: true },
-    });
-    bundle = buildYearBundleFromSnapshots(year, snapshots, fixedRows);
-  } else {
-    const hist = getHistoricalYearBundle(year);
-    const fallback: SalesControllingYearBundle = {
-      year,
-      source: "static",
-      months: Array.from({ length: 12 }, (_, i) => emptyMonthBlock(i + 1)),
-    };
-    bundle = hist ?? fallback;
-    bundle = enrichStaticBundleWithFixedCosts(bundle, fixedRows);
-  }
+  const snapshots = await prisma.commissionMonthSnapshot.findMany({
+    where: { year },
+    orderBy: { month: "asc" },
+    select: { month: true, payload: true },
+  });
+
+  const staticTemplate: SalesControllingYearBundle | null =
+    year < 2026
+      ? (getHistoricalYearBundle(year) ?? {
+          year,
+          source: "static",
+          months: Array.from({ length: 12 }, (_, i) => emptyMonthBlock(i + 1)),
+        })
+      : null;
+
+  const bundle = buildSalesControllingYearBundle(year, snapshots, fixedRows, staticTemplate);
 
   const yearTotals = sumYearTotals(bundle.months);
 
@@ -92,10 +89,16 @@ export default async function SalesControllingPage({ searchParams }: Props) {
               Čísla jsou <strong>vždy po měnách</strong> — různé měny se nesčítají do jedné částky. Grafy a KPI vždy
               ukazují jednu zvolenou měnu najednou.
             </p>
+            <p>
+              U let <strong>2023–2025</strong> se výnosy a provize načítají z <strong>uložených výpočtů</strong> v nástroji
+              Provize (stejná DB jako u roku 2026+), pokud jsi daný měsíc přepočítal. Chybějící měsíce můžeš doplnit ručně
+              v{" "}
+              <code className="bg-muted rounded px-1 py-0.5 text-xs">src/data/sales-controlling/historical.ts</code>.
+            </p>
             {bundle.source === "static" && (
               <p>
-                Rok {year}: data ze statického souboru — upravíš je v{" "}
-                <code className="bg-muted rounded px-1 py-0.5 text-xs">src/data/sales-controlling/historical.ts</code>.
+                Rok {year}: zatím žádné uložené výpočty z Provizí — zobrazuje se jen šablona / fixní náklady. Po prvním
+                přepočtu měsíce v Provizích se data objeví i zde.
               </p>
             )}
           </div>
