@@ -50,6 +50,42 @@ function downloadText(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Pipedrive výpočet může skončit prázdným tělem (timeout gatewaye, 502) — res.json() by spadlo. */
+async function parseJsonResponse(res: Response): Promise<{
+  ok: boolean;
+  data: Record<string, unknown> | null;
+  parseError: string | null;
+}> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {
+      ok: res.ok,
+      data: null,
+      parseError: res.ok
+        ? null
+        : `Prázdná odpověď serveru (HTTP ${res.status}). Často timeout nebo chyba prostředí — zkuste znovu nebo kratší období.`,
+    };
+  }
+  try {
+    const data = JSON.parse(trimmed) as unknown;
+    if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+      return { ok: res.ok, data: data as Record<string, unknown>, parseError: null };
+    }
+    return {
+      ok: res.ok,
+      data: null,
+      parseError: "Odpověď serveru není JSON objekt.",
+    };
+  } catch {
+    return {
+      ok: res.ok,
+      data: null,
+      parseError: `Neplatný JSON v odpovědi (HTTP ${res.status}).`,
+    };
+  }
+}
+
 type Props = { pipedriveConfigured: boolean };
 
 export function CommissionTool({ pipedriveConfigured }: Props) {
@@ -83,12 +119,21 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
           return;
         }
         if (!res.ok) {
-          const j = (await res.json()) as { error?: string };
-          setError(j.error || `Načtení uloženého měsíce selhalo (${res.status})`);
+          const { data: j, parseError } = await parseJsonResponse(res);
+          setError(
+            parseError ??
+              (j?.error as string | undefined) ??
+              `Načtení uloženého měsíce selhalo (${res.status})`,
+          );
           setData(null);
           return;
         }
-        const j = (await res.json()) as Record<string, unknown>;
+        const { data: j, parseError } = await parseJsonResponse(res);
+        if (parseError || !j) {
+          setError(parseError || "Neplatná odpověď při načtení snímku.");
+          setData(null);
+          return;
+        }
         setData(j);
       } catch (e) {
         if (ac.signal.aborted) {
@@ -114,13 +159,26 @@ export function CommissionTool({ pipedriveConfigured }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year, month }),
       });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(j.error || "Chyba výpočtu");
+      const { data: j, parseError } = await parseJsonResponse(res);
+      if (parseError) {
+        setError(parseError);
         setData(null);
         return;
       }
-      setData(j as Record<string, unknown>);
+      if (!res.ok) {
+        setError(
+          (j?.error as string | undefined) ||
+            `Chyba výpočtu (HTTP ${res.status}).`,
+        );
+        setData(null);
+        return;
+      }
+      if (!j) {
+        setError("Server vrátil prázdnou odpověď i při úspěchu.");
+        setData(null);
+        return;
+      }
+      setData(j);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setData(null);

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
+  year: z.number().int().min(2000).max(2100).optional(),
   ownerLabel: z.string().min(1).max(500).optional(),
   amount: z.number().finite().optional(),
   currency: z.string().min(1).max(8).optional(),
@@ -39,6 +40,9 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx) {
   }
   const p = parsed.data;
   const data: Record<string, unknown> = {};
+  if (p.year != null) {
+    data.year = p.year;
+  }
   if (p.ownerLabel != null) {
     data.ownerLabel = p.ownerLabel.trim();
   }

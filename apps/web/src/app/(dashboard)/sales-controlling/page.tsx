@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildYearBundleFromSnapshots,
   emptyMonthBlock,
+  enrichStaticBundleWithFixedCosts,
   sumYearTotals,
 } from "@/lib/sales-controlling/metrics";
 import type { SalesControllingYearBundle } from "@/lib/sales-controlling/types";
@@ -33,11 +34,13 @@ export default async function SalesControllingPage({ searchParams }: Props) {
   const isAdmin = session?.user?.role === "ADMIN";
 
   const fixedRows = await prisma.salesPersonMonthlyFixed.findMany({
+    where: { year },
     orderBy: [{ active: "desc" }, { ownerLabel: "asc" }],
   });
 
   const fixedInitial: FixedCostItemDto[] = fixedRows.map((f) => ({
     id: f.id,
+    year: f.year,
     ownerLabel: f.ownerLabel,
     amount: Number(f.amount),
     currency: f.currency,
@@ -61,32 +64,49 @@ export default async function SalesControllingPage({ searchParams }: Props) {
       months: Array.from({ length: 12 }, (_, i) => emptyMonthBlock(i + 1)),
     };
     bundle = hist ?? fallback;
+    bundle = enrichStaticBundleWithFixedCosts(bundle, fixedRows);
   }
 
   const yearTotals = sumYearTotals(bundle.months);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Sales controlling</h1>
-        <p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-relaxed">
-          <strong>Výnos</strong> = součet hodnoty všech won dealů v kalendářním měsíci (
-          <code>won_time</code>). <strong>Náklady na provize</strong> ze započtených dealů (nástroj Provize).{" "}
-          <strong>Fixní odměny</strong> se nastavují níže (admin) a počítají se každý měsíc znovu. Metriky jsou
-          vždy <strong>po měnách</strong> — nesčítáme různé měny do jedné částky.
+    <div className="space-y-8">
+      <header className="max-w-3xl">
+        <h1 className="text-3xl font-semibold tracking-tight">Sales controlling</h1>
+        <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+          Přehled výnosů z won dealů, nákladů na provize a fixních odměn — přehledně po měnách a měsících.
         </p>
-        {bundle.source === "static" && (
-          <p className="text-muted-foreground mt-2 text-sm">
-            Rok {year}: data ze statického souboru — doplníš čísla v{" "}
-            <code className="bg-muted rounded px-1">src/data/sales-controlling/historical.ts</code>.
-          </p>
-        )}
-      </div>
+        <details className="group mt-4">
+          <summary className="text-primary cursor-pointer text-sm font-medium hover:underline">
+            Jak se metriky počítají
+          </summary>
+          <div className="text-muted-foreground mt-3 space-y-2 border-l-2 border-primary/25 pl-4 text-sm leading-relaxed">
+            <p>
+              <strong>Výnos</strong> = součet hodnoty všech won dealů v kalendářním měsíci (
+              <code className="bg-muted rounded px-1 py-0.5 text-xs">won_time</code>).{" "}
+              <strong>Náklady na provize</strong> ze započtených dealů (nástroj Provize).{" "}
+              <strong>Fixní odměny</strong> nastaví admin <strong>pro každý rok zvlášť</strong> a v každém měsíci se
+              započítají znovu.
+            </p>
+            <p>
+              Čísla jsou <strong>vždy po měnách</strong> — různé měny se nesčítají do jedné částky. Grafy a KPI vždy
+              ukazují jednu zvolenou měnu najednou.
+            </p>
+            {bundle.source === "static" && (
+              <p>
+                Rok {year}: data ze statického souboru — upravíš je v{" "}
+                <code className="bg-muted rounded px-1 py-0.5 text-xs">src/data/sales-controlling/historical.ts</code>.
+              </p>
+            )}
+          </div>
+        </details>
+      </header>
 
       <SalesControllingClient
         bundle={bundle}
         yearTotals={yearTotals}
         isAdmin={isAdmin}
+        fixedCostsYear={year}
         fixedInitial={fixedInitial}
       />
     </div>
