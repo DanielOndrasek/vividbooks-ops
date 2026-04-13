@@ -143,9 +143,16 @@ type Props = {
   bundle: SalesControllingYearBundle;
   yearTotals: YearTotalsByCurrency;
   yearRatio: Record<string, number | null>;
+  /** Volitelná poznámka pod nadpis (např. vyřazení obchodníka z týmových součtů). */
+  subtitleNote?: string | null;
 };
 
-export function SalesControllingOverview({ bundle, yearTotals, yearRatio }: Props) {
+export function SalesControllingOverview({
+  bundle,
+  yearTotals,
+  yearRatio,
+  subtitleNote,
+}: Props) {
   const ccys = useMemo(() => {
     const fromTotals = Object.keys(yearTotals).sort();
     if (fromTotals.length > 0) {
@@ -191,6 +198,9 @@ export function SalesControllingOverview({ bundle, yearTotals, yearRatio }: Prop
             jen s fixy). <strong>Roční KPI</strong> odpovídají tabulce „Roční souhrn“ — započítávají jen měsíce s načtenými
             provizemi, ne prázdné měsíce pouze s fixními náklady.
           </p>
+          {subtitleNote ? (
+            <p className="text-muted-foreground mt-2 max-w-2xl border-l-2 border-primary/30 pl-3 text-sm">{subtitleNote}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Měna pro grafy">
           {ccys.map((c) => (
@@ -235,7 +245,13 @@ export function SalesControllingOverview({ bundle, yearTotals, yearRatio }: Prop
             }
             hint="Náklady / výnos"
             emphasize={
-              ratioPct != null && ratioPct > COST_RATIO_WARN_PCT ? "danger" : "neutral"
+              ratioPct == null
+                ? "neutral"
+                : ratioPct > COST_RATIO_WARN_PCT
+                  ? "danger"
+                  : ratioPct < COST_RATIO_WARN_PCT
+                    ? "success"
+                    : "neutral"
             }
           />
         </div>

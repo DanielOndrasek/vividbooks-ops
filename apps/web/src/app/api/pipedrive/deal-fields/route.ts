@@ -29,10 +29,18 @@ export async function GET() {
     const fields = await client.getDealFields();
     const rows = fields
       .map((f) => ({
+        id: f.id,
         key: f.key,
         name: f.name,
         field_type: f.field_type,
-        options: Array.isArray(f.options) ? f.options.length : 0,
+        optionsCount: Array.isArray(f.options) ? f.options.length : 0,
+        /** První pár voleb (select/multiselect) — pro kontrolu id hodnot v dealu */
+        optionsSample:
+          Array.isArray(f.options) && f.options.length > 0
+            ? (f.options as { id?: unknown; label?: unknown }[])
+                .slice(0, 8)
+                .map((o) => ({ id: o.id, label: o.label }))
+            : [],
       }))
       .sort((a, b) => {
         const c = `${a.name}`.localeCompare(`${b.name}`);

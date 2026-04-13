@@ -8,7 +8,6 @@ import { prisma } from "@/lib/prisma";
 import {
   buildSalesControllingYearBundle,
   emptyMonthBlock,
-  sumYearTotals,
 } from "@/lib/sales-controlling/metrics";
 import type { SalesControllingYearBundle } from "@/lib/sales-controlling/types";
 
@@ -64,8 +63,6 @@ export default async function SalesControllingPage({ searchParams }: Props) {
 
   const bundle = buildSalesControllingYearBundle(year, snapshots, fixedRows, staticTemplate);
 
-  const yearTotals = sumYearTotals(bundle.months);
-
   return (
     <div className="space-y-8">
       <header className="max-w-3xl">
@@ -107,7 +104,6 @@ export default async function SalesControllingPage({ searchParams }: Props) {
 
       <SalesControllingClient
         bundle={bundle}
-        yearTotals={yearTotals}
         isAdmin={isAdmin}
         fixedCostsYear={year}
         fixedInitial={fixedInitial}

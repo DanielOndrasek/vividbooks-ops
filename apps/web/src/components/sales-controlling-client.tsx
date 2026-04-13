@@ -11,10 +11,17 @@ import { cn } from "@/lib/utils";
 import type {
   CurrencyControllingRow,
   MonthControllingBlock,
+  OwnerYearTotalsRow,
   SalesControllingYearBundle,
   YearTotalsByCurrency,
 } from "@/lib/sales-controlling/types";
-import { yearTotalsCostRatio } from "@/lib/sales-controlling/metrics";
+import {
+  aggregateOwnerYearTotals,
+  applyExcludedDanielFromTeamMonths,
+  ownerMatchesDanielExclusion,
+  sumYearTotals,
+  yearTotalsCostRatio,
+} from "@/lib/sales-controlling/metrics";
 
 function fmtMoney(n: number): string {
   return n.toLocaleString("cs-CZ", {
@@ -34,8 +41,14 @@ function fmtPct(ratio: number | null): string {
 const COST_RATIO_WARN = 0.3;
 
 function costRatioCellClass(ratio: number | null): string {
-  if (ratio != null && ratio > COST_RATIO_WARN) {
+  if (ratio == null) {
+    return "";
+  }
+  if (ratio > COST_RATIO_WARN) {
     return "bg-red-500/25 font-medium text-red-950 dark:bg-red-950/55 dark:text-red-100";
+  }
+  if (ratio < COST_RATIO_WARN) {
+    return "bg-emerald-500/20 font-medium text-emerald-950 dark:bg-emerald-950/45 dark:text-emerald-100";
   }
   return "";
 }
@@ -148,6 +161,28 @@ function CurrencyBlock({
   );
 }
 
+function OwnerYearBlock({
+  row,
+  excludedFromTeamTotals,
+}: {
+  row: OwnerYearTotalsRow;
+  excludedFromTeamTotals: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/15 p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold">{row.ownerLabel}</p>
+        {excludedFromTeamTotals ? (
+          <span className="text-muted-foreground rounded-md border border-dashed px-2 py-0.5 text-xs">
+            mimo součty týmu
+          </span>
+        ) : null}
+      </div>
+      <CurrencyBlock title="" rows={row.byCurrency} />
+    </div>
+  );
+}
+
 function MonthSection({ block }: { block: MonthControllingBlock }) {
   const monthName = MONTH_NAMES_CS[block.month - 1] ?? `Měsíc ${block.month}`;
   const hasMetrics =
@@ -234,18 +269,44 @@ export type FixedCostItemDto = {
 
 export function SalesControllingClient({
   bundle,
-  yearTotals,
   isAdmin,
   fixedCostsYear,
   fixedInitial,
 }: {
   bundle: SalesControllingYearBundle;
-  yearTotals: YearTotalsByCurrency;
   isAdmin: boolean;
   fixedCostsYear: number;
   fixedInitial: FixedCostItemDto[];
 }) {
+  const [excludeDaniel, setExcludeDaniel] = useState(false);
+
+  const monthsForTeamTotals = useMemo(() => {
+    if (!excludeDaniel) {
+      return bundle.months;
+    }
+    return applyExcludedDanielFromTeamMonths(bundle.months, true);
+  }, [bundle.months, excludeDaniel]);
+
+  const bundleForCharts = useMemo(
+    (): SalesControllingYearBundle => ({
+      ...bundle,
+      months: monthsForTeamTotals,
+    }),
+    [bundle, monthsForTeamTotals],
+  );
+
+  const yearTotals = useMemo(
+    () => sumYearTotals(monthsForTeamTotals),
+    [monthsForTeamTotals],
+  );
+
   const yearRatio = useMemo(() => yearTotalsCostRatio(yearTotals), [yearTotals]);
+
+  const ownerYearRows = useMemo(
+    () => aggregateOwnerYearTotals(bundle.months),
+    [bundle.months],
+  );
+
   const totalCcys = Object.keys(yearTotals).sort();
 
   return (
@@ -289,15 +350,48 @@ export function SalesControllingClient({
         </form>
       </div>
 
-      <SalesControllingOverview bundle={bundle} yearTotals={yearTotals} yearRatio={yearRatio} />
+      <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex cursor-pointer items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="accent-primary mt-0.5 h-4 w-4 shrink-0"
+            checked={excludeDaniel}
+            onChange={(e) => setExcludeDaniel(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Nezapočítat Daniela Ondráška</span>
+            <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+              Zapnuto = jeho výnos, provize a fixní odměny se odečtou z týmových měsíčních čísel — roční souhrn, grafy a KPI
+              jsou bez něj. Měsíční rozbalení níže zůstává beze změny (celá data).
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <SalesControllingOverview
+        bundle={bundleForCharts}
+        yearTotals={yearTotals}
+        yearRatio={yearRatio}
+        subtitleNote={
+          excludeDaniel
+            ? "Roční souhrn a grafy: tým bez Daniela Ondráška (shoda jména včetně překlepu „Ondrasek“ bez háčků)."
+            : null
+        }
+      />
 
       <PanelCard
         title="Roční souhrn (tým)"
         description={
           <>
             Součty jen z měsíců, kde jsou načtené provize (uložený výpočet / vyplněná historie). Fixní náklady se do ročního součtu započítají jen v těchto měsících — měsíce „jen fix“ bez provizí v souhrnu nejsou. Sloupec{" "}
-            <strong>Celkem náklady</strong> = provize + fix. Buňka <strong>Nákl./výnos</strong> je zvýrazněná červeně nad
+            <strong>Celkem náklady</strong> = provize + fix. Buňka <strong>Nákl./výnos</strong>: zeleně pod 30 %, červeně nad
             30 %.
+            {excludeDaniel ? (
+              <>
+                {" "}
+                <strong>Daniel Ondrášek</strong> je v těchto součtech odečtený z týmu (viz přepínač výše).
+              </>
+            ) : null}
           </>
         }
       >
@@ -353,6 +447,31 @@ export function SalesControllingClient({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </PanelCard>
+
+      <PanelCard
+        title="Obchodníci (součty za rok)"
+        description={
+          <>
+            Stejná pravidla jako u ročního souhrnu týmu — jen měsíce s načtenými provizemi. Každý řádek = jeden obchodník
+            (shoda jmen z Pipedrive), sloupce podle měn. U Daniela při zapnutém přepínači značka, že jeho čísla nejsou v
+            horním týmovém součtu.
+          </>
+        }
+      >
+        {ownerYearRows.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Žádná data obchodníků za tento rok.</p>
+        ) : (
+          <div className="space-y-5">
+            {ownerYearRows.map((row) => (
+              <OwnerYearBlock
+                key={row.ownerLabel}
+                row={row}
+                excludedFromTeamTotals={excludeDaniel && ownerMatchesDanielExclusion(row.ownerLabel)}
+              />
+            ))}
           </div>
         )}
       </PanelCard>

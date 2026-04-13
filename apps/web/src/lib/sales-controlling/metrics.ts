@@ -4,6 +4,7 @@ import type {
   CurrencyControllingRow,
   MonthControllingBlock,
   OwnerMonthRow,
+  OwnerYearTotalsRow,
   SalesControllingYearBundle,
   YearTotalsByCurrency,
 } from "@/lib/sales-controlling/types";
@@ -15,6 +16,133 @@ export function normalizeOwnerLabel(s: string): string {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+const DANIEL_NAME_VARIANTS = ["Daniel Ondrášek", "Daniel Ondrasek"] as const;
+
+/** Normalizované jméno pro shodu v datech (Pipedrive / ruční fixy). */
+export function getDanielOwnerNormsForExclusion(): readonly string[] {
+  return DANIEL_NAME_VARIANTS.map((v) => normalizeOwnerLabel(v));
+}
+
+export function ownerMatchesDanielExclusion(ownerLabel: string): boolean {
+  const n = normalizeOwnerLabel(ownerLabel);
+  return getDanielOwnerNormsForExclusion().includes(n);
+}
+
+function emptyCurrencyRow(): CurrencyControllingRow {
+  return {
+    revenue: 0,
+    commissionCost: 0,
+    fixedCost: 0,
+    net: 0,
+    costRatio: null,
+  };
+}
+
+/** Týmový řádek minus příspěvek jednoho obchodníka (stejné měny). */
+export function subtractTeamByCurrencyMaps(
+  team: Record<string, CurrencyControllingRow>,
+  ownerSlice: Record<string, CurrencyControllingRow>,
+): Record<string, CurrencyControllingRow> {
+  const keys = new Set([...Object.keys(team), ...Object.keys(ownerSlice)]);
+  const out: Record<string, CurrencyControllingRow> = {};
+  for (const ccy of keys) {
+    const t = team[ccy] ?? emptyCurrencyRow();
+    const o = ownerSlice[ccy] ?? emptyCurrencyRow();
+    const revenue = t.revenue - o.revenue;
+    const commissionCost = t.commissionCost - o.commissionCost;
+    const fixedCost = t.fixedCost - o.fixedCost;
+    const totalCost = commissionCost + fixedCost;
+    const net = revenue - totalCost;
+    const costRatio = revenue > 0 ? totalCost / revenue : null;
+    out[ccy] = { revenue, commissionCost, fixedCost, net, costRatio };
+  }
+  return out;
+}
+
+/**
+ * Z týmových měsíčních čísel odečte příspěvek Daniela (výnos, provize, fix z řádku obchodníka).
+ * Měsíční detail (`owners`) nemění — jen `teamByCurrency` pro roční souhrn a grafy.
+ */
+export function applyExcludedDanielFromTeamMonths(
+  months: MonthControllingBlock[],
+  excludeDaniel: boolean,
+): MonthControllingBlock[] {
+  if (!excludeDaniel) {
+    return months;
+  }
+  const norms = new Set(getDanielOwnerNormsForExclusion());
+  return months.map((block) => {
+    const owner = block.owners.find((o) =>
+      norms.has(normalizeOwnerLabel(o.ownerLabel)),
+    );
+    if (!owner) {
+      return block;
+    }
+    return {
+      ...block,
+      teamByCurrency: subtractTeamByCurrencyMaps(block.teamByCurrency, owner.byCurrency),
+    };
+  });
+}
+
+type AggCcy = { revenue: number; commissionCost: number; fixedCost: number };
+
+/**
+ * Součty za obchodníka přes měsíce se stejným pravidlem jako `sumYearTotals` (jen měsíce s načtenými provizemi).
+ */
+export function aggregateOwnerYearTotals(
+  months: MonthControllingBlock[],
+): OwnerYearTotalsRow[] {
+  const byNorm = new Map<string, { display: string; acc: Map<string, AggCcy> }>();
+
+  for (const mo of months) {
+    if (mo.missingSnapshot) {
+      continue;
+    }
+    if (Object.keys(mo.teamByCurrency).length === 0) {
+      continue;
+    }
+    for (const o of mo.owners) {
+      const n = normalizeOwnerLabel(o.ownerLabel);
+      if (!byNorm.has(n)) {
+        byNorm.set(n, { display: o.ownerLabel.trim().replace(/\s+/g, " "), acc: new Map() });
+      }
+      const entry = byNorm.get(n)!;
+      for (const [ccy, row] of Object.entries(o.byCurrency)) {
+        const cur = entry.acc.get(ccy) ?? {
+          revenue: 0,
+          commissionCost: 0,
+          fixedCost: 0,
+        };
+        cur.revenue += row.revenue;
+        cur.commissionCost += row.commissionCost;
+        cur.fixedCost += row.fixedCost;
+        entry.acc.set(ccy, cur);
+      }
+    }
+  }
+
+  const rows: OwnerYearTotalsRow[] = [];
+  for (const [, { display, acc }] of byNorm) {
+    const byCurrency: OwnerYearTotalsRow["byCurrency"] = {};
+    for (const [ccy, a] of acc) {
+      const totalCost = a.commissionCost + a.fixedCost;
+      const net = a.revenue - totalCost;
+      const costRatio = a.revenue > 0 ? totalCost / a.revenue : null;
+      byCurrency[ccy] = {
+        revenue: a.revenue,
+        commissionCost: a.commissionCost,
+        fixedCost: a.fixedCost,
+        net,
+        costRatio,
+      };
+    }
+    rows.push({ ownerLabel: display, byCurrency });
+  }
+  rows.sort((a, b) => a.ownerLabel.localeCompare(b.ownerLabel, "cs"));
+  return rows;
 }
 
 type FixedRow = {

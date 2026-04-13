@@ -34,3 +34,18 @@ export type YearTotalsByCurrency = Record<
     net: number;
   }
 >;
+
+/** Agregace jednoho obchodníka za celý rok (jen měsíce započtené do ročního souhrnu týmu). */
+export type OwnerYearTotalsRow = {
+  ownerLabel: string;
+  byCurrency: Record<
+    string,
+    {
+      revenue: number;
+      commissionCost: number;
+      fixedCost: number;
+      net: number;
+      costRatio: number | null;
+    }
+  >;
+};
