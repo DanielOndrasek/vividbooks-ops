@@ -5,6 +5,6 @@
     "dev": "npm run dev --prefix apps/web",
     "build": "npm run build --prefix apps/web",
     "lint": "npm run lint --prefix apps/web",
-    "deploy:vercel": "npx vercel@39 deploy --prod --yes"
+    "deploy:vercel": "npx vercel@51.3.0 deploy --prod --yes"
   }
 }
