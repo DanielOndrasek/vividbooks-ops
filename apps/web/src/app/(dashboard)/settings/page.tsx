@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
-import { PipedriveDealFieldsButton } from "@/components/pipedrive-deal-fields-button";
+import { PipedriveSchemaExplorer } from "@/components/pipedrive-schema-explorer";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
 import {
@@ -145,10 +145,10 @@ export default async function SettingsPage() {
           </div>
         </div>
         {isAdmin && pd.configured ? (
-          <PipedriveDealFieldsButton />
+          <PipedriveSchemaExplorer />
         ) : (
           <p className="text-muted-foreground text-sm">
-            Tabulku polí může načíst jen administrátor a jen při kompletní konfiguraci.
+            Schéma Pipedrive (pipeline, pole, uživatelé) může načíst jen administrátor a jen při kompletní konfiguraci.
           </p>
         )}
       </section>
