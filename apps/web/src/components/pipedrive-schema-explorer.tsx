@@ -10,8 +10,7 @@ type FieldRow = {
   name: unknown;
   field_type: unknown;
   edit_flag: unknown;
-  optionsCount: number;
-  optionsSample: { id: unknown; label: unknown }[];
+  options: { id: unknown; label: unknown }[];
 };
 
 type PipelineStage = {
@@ -67,9 +66,12 @@ function FieldTable({ rows, filter }: { rows: FieldRow[]; filter: string }) {
     if (!q) {
       return rows;
     }
-    return rows.filter((r) =>
-      matchesFilter(q, r.name, r.key, r.id, r.field_type),
-    );
+    return rows.filter((r) => {
+      if (matchesFilter(q, r.name, r.key, r.id, r.field_type)) {
+        return true;
+      }
+      return (r.options ?? []).some((o) => matchesFilter(q, o.label, o.id));
+    });
   }, [rows, q]);
 
   if (filtered.length === 0) {
@@ -97,12 +99,12 @@ function FieldTable({ rows, filter }: { rows: FieldRow[]; filter: string }) {
               <td className="p-2">{String(r.name ?? "")}</td>
               <td className="p-2">{String(r.field_type ?? "")}</td>
               <td className="p-2">{r.edit_flag === true ? "ano" : r.edit_flag === false ? "ne" : "—"}</td>
-              <td className="p-2">
-                <span className="text-muted-foreground">{r.optionsCount}</span>
-                {r.optionsSample.length > 0 ? (
-                  <ul className="text-muted-foreground mt-1 list-inside list-disc text-[10px] leading-snug">
-                    {r.optionsSample.map((o, j) => (
-                      <li key={j}>
+              <td className="max-w-[18rem] p-2">
+                <span className="text-muted-foreground">{r.options?.length ?? 0}</span>
+                {(r.options?.length ?? 0) > 0 ? (
+                  <ul className="text-muted-foreground mt-1 max-h-48 list-inside list-disc overflow-y-auto text-[10px] leading-snug">
+                    {(r.options ?? []).map((o, j) => (
+                      <li key={`${String(o.id)}-${j}`}>
                         id {String(o.id)} — {String(o.label ?? "")}
                       </li>
                     ))}

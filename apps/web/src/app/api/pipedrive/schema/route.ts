@@ -13,8 +13,8 @@ type FieldRow = {
   name: unknown;
   field_type: unknown;
   edit_flag: unknown;
-  optionsCount: number;
-  optionsSample: { id: unknown; label: unknown }[];
+  /** Všechny volby (enum/set …); může být dlouhé — v UI je scrollovatelný výpis. */
+  options: { id: unknown; label: unknown }[];
 };
 
 function mapEntityField(f: DealDict): FieldRow {
@@ -25,10 +25,10 @@ function mapEntityField(f: DealDict): FieldRow {
     name: f.name,
     field_type: f.field_type,
     edit_flag: f.edit_flag,
-    optionsCount: opts.length,
-    optionsSample: (opts as { id?: unknown; label?: unknown }[])
-      .slice(0, 8)
-      .map((o) => ({ id: o.id, label: o.label })),
+    options: (opts as { id?: unknown; label?: unknown }[]).map((o) => ({
+      id: o.id,
+      label: o.label,
+    })),
   };
 }
 
