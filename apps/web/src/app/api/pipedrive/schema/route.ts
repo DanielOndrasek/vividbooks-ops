@@ -61,6 +61,8 @@ export async function GET() {
     const dealFieldsRaw = await client.getDealFields();
     const personFieldsRaw = await client.getPersonFields();
     const organizationFieldsRaw = await client.getOrganizationFields();
+    const productFieldsRaw = await client.getProductFields();
+    const productsRaw = await client.getAllProducts();
     const pipelinesRaw = await client.getPipelines();
     const stagesRaw = await client.getAllStages();
     const usersRaw = await client.getUsers();
@@ -68,6 +70,7 @@ export async function GET() {
     const dealFields = dealFieldsRaw.map(mapEntityField).sort(sortFields);
     const personFields = personFieldsRaw.map(mapEntityField).sort(sortFields);
     const organizationFields = organizationFieldsRaw.map(mapEntityField).sort(sortFields);
+    const productFields = productFieldsRaw.map(mapEntityField).sort(sortFields);
 
     const pipelines = [...pipelinesRaw].sort((a, b) =>
       `${a.name ?? ""}`.localeCompare(`${b.name ?? ""}`),
@@ -120,10 +123,23 @@ export async function GET() {
       }))
       .sort((a, b) => `${a.name ?? ""}`.localeCompare(`${b.name ?? ""}`));
 
+    const products = productsRaw
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        unit: p.unit,
+        tax: p.tax,
+        active_flag: p.active_flag,
+      }))
+      .sort((a, b) => `${a.name ?? ""}`.localeCompare(`${b.name ?? ""}`));
+
     return NextResponse.json({
       dealFields,
       personFields,
       organizationFields,
+      productFields,
+      products,
       pipelines: pipelinesWithStages,
       users,
     });

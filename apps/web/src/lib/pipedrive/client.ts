@@ -114,6 +114,19 @@ export class PipedriveClient {
     return body.data ?? [];
   }
 
+  async getProductFields(): Promise<DealDict[]> {
+    const body = (await this.get("/productFields")) as { data?: DealDict[] };
+    return body.data ?? [];
+  }
+
+  async getAllProducts(): Promise<DealDict[]> {
+    const out: DealDict[] = [];
+    for await (const p of this.iterPaginated("/products")) {
+      out.push(p);
+    }
+    return out;
+  }
+
   async getAllStages(): Promise<DealDict[]> {
     const out: DealDict[] = [];
     for await (const s of this.iterPaginated("/stages")) {

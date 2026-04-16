@@ -35,10 +35,21 @@ type UserRow = {
   active_flag: unknown;
 };
 
+type ProductRow = {
+  id: unknown;
+  name: unknown;
+  code: unknown;
+  unit: unknown;
+  tax: unknown;
+  active_flag: unknown;
+};
+
 type SchemaPayload = {
   dealFields: FieldRow[];
   personFields: FieldRow[];
   organizationFields: FieldRow[];
+  productFields: FieldRow[];
+  products: ProductRow[];
   pipelines: PipelineBlock[];
   users: UserRow[];
 };
@@ -48,6 +59,8 @@ const TABS = [
   { id: "deals", label: "Pole obchodů" },
   { id: "people", label: "Pole osob" },
   { id: "orgs", label: "Pole organizací" },
+  { id: "productFields", label: "Pole produktů" },
+  { id: "products", label: "Produkty" },
   { id: "users", label: "Uživatelé" },
 ] as const;
 
@@ -137,16 +150,18 @@ export function PipedriveSchemaExplorer() {
         setError(j.error || "Chyba");
         return;
       }
-      if (!j.dealFields) {
+      if (!Array.isArray(j.dealFields) || !Array.isArray(j.productFields)) {
         setError("Neočekávaná odpověď");
         return;
       }
       setData({
         dealFields: j.dealFields,
-        personFields: j.personFields,
-        organizationFields: j.organizationFields,
-        pipelines: j.pipelines,
-        users: j.users,
+        personFields: j.personFields ?? [],
+        organizationFields: j.organizationFields ?? [],
+        productFields: j.productFields,
+        products: j.products ?? [],
+        pipelines: j.pipelines ?? [],
+        users: j.users ?? [],
       });
       setOpen(true);
     } catch (e) {
@@ -183,17 +198,33 @@ export function PipedriveSchemaExplorer() {
     return data.users.filter((u) => matchesFilter(q, u.name, u.email, u.id));
   }, [data, filter]);
 
+  const productRows = useMemo(() => {
+    if (!data) {
+      return [];
+    }
+    const q = filter.trim().toLowerCase();
+    if (!q) {
+      return data.products;
+    }
+    return data.products.filter((p) =>
+      matchesFilter(q, p.name, p.code, p.id, p.unit, p.tax),
+    );
+  }, [data, filter]);
+
   return (
     <div className="space-y-3">
       <Button type="button" variant="outline" disabled={loading} onClick={() => void load()}>
-        {loading ? "Načítám…" : "Načíst schéma Pipedrive (pipeline, fáze, pole, uživatelé)"}
+        {loading
+          ? "Načítám…"
+          : "Načíst schéma Pipedrive (pipeline, fáze, pole, produkty, uživatelé)"}
       </Button>
       {error && <p className="text-destructive text-sm">{error}</p>}
       {open && data && (
         <div className="space-y-3">
           <p className="text-muted-foreground text-xs">
             Do env <code className="bg-muted rounded px-1">PIPEDRIVE_CATEGORY_FIELD_KEY</code> patří{" "}
-            <strong>key</strong> pole u obchodu (hash), ne číselné <strong>id</strong> z tabulky.
+            <strong>key</strong> pole (hash) u obchodu i u produktu, ne číselné <strong>id</strong> řádku
+            pole — to slouží k úpravě definice v Pipedrive.
           </p>
           <div className="flex flex-wrap gap-1 border-b pb-2">
             {TABS.map((t) => (
@@ -276,6 +307,39 @@ export function PipedriveSchemaExplorer() {
           {tab === "deals" && <FieldTable rows={data.dealFields} filter={filter} />}
           {tab === "people" && <FieldTable rows={data.personFields} filter={filter} />}
           {tab === "orgs" && <FieldTable rows={data.organizationFields} filter={filter} />}
+          {tab === "productFields" && <FieldTable rows={data.productFields} filter={filter} />}
+          {tab === "products" && (
+            <div className="max-h-[min(28rem,70vh)] overflow-auto rounded-md border">
+              {productRows.length === 0 ? (
+                <p className="text-muted-foreground py-6 text-center text-sm">Žádné produkty.</p>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr>
+                      <th className="p-2">id</th>
+                      <th className="p-2">název</th>
+                      <th className="p-2">kód</th>
+                      <th className="p-2">jednotka</th>
+                      <th className="p-2">daň</th>
+                      <th className="p-2">aktivní</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productRows.map((p, i) => (
+                      <tr key={String(p.id ?? i)} className="border-b align-top last:border-0">
+                        <td className="p-2 tabular-nums">{String(p.id ?? "—")}</td>
+                        <td className="p-2">{String(p.name ?? "")}</td>
+                        <td className="max-w-[10rem] break-all p-2 font-mono">{String(p.code ?? "—")}</td>
+                        <td className="p-2">{String(p.unit ?? "—")}</td>
+                        <td className="p-2 tabular-nums">{String(p.tax ?? "—")}</td>
+                        <td className="p-2">{p.active_flag === false ? "ne" : "ano"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
           {tab === "users" && (
             <div className="max-h-[min(28rem,70vh)] overflow-auto rounded-md border">
               {userRows.length === 0 ? (
