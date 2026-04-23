@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireRoles, requireSession } from "@/lib/api-session";
 import { assertGmailConfigured } from "@/lib/gmail-config";
 import { getPipedriveEnv, maskSecret } from "@/lib/integrations/env";
+import { getPohodaEnvStatus } from "@/lib/pohoda-env-status";
 import { isDriveConfigured } from "@/services/drive";
 
 export async function GET() {
@@ -25,6 +26,7 @@ export async function GET() {
 
   const driveOk = isDriveConfigured();
   const pd = getPipedriveEnv();
+  const pohoda = getPohodaEnvStatus();
 
   return NextResponse.json({
     pipedrive: {
@@ -60,6 +62,20 @@ export async function GET() {
     },
     ai: {
       apiKeySet: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+    },
+    pohoda: {
+      invoiceExportConfigured: pohoda.invoiceExportConfigured,
+      bankImportConfigured: pohoda.bankImportConfigured,
+      missingForInvoice: pohoda.missingForInvoice,
+      missingForBankImport: pohoda.missingForBankImport,
+      mserverUrl: pohoda.mserverUrl,
+      ico: pohoda.ico,
+      application: pohoda.application,
+      httpUser: pohoda.httpUser,
+      httpPassword: pohoda.httpPasswordMasked,
+      invoiceAccountingIds: pohoda.invoiceAccountingIds,
+      invoiceClassificationVatIds: pohoda.invoiceClassificationVatIds,
+      defaultBankAccountIds: pohoda.defaultBankAccountIds,
     },
   });
 }

@@ -15,6 +15,7 @@ import {
   getPipedriveEnv,
   maskSecret,
 } from "@/lib/integrations/env";
+import { getPohodaEnvStatus } from "@/lib/pohoda-env-status";
 import { buildUnprocessedQuery } from "@/services/gmail";
 import { isDriveConfigured, verifyDriveRootsOnSharedDrive } from "@/services/drive";
 
@@ -33,6 +34,7 @@ export default async function SettingsPage() {
   const gmailOk = gmailStatus.configured;
   const driveOk = isDriveConfigured();
   const driveShared = driveOk ? await verifyDriveRootsOnSharedDrive() : null;
+  const pohoda = getPohodaEnvStatus();
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -348,6 +350,140 @@ export default async function SettingsPage() {
             )}
           </div>
         )}
+      </section>
+
+      <section className="space-y-3 rounded-lg border bg-card p-5">
+        <h2 className="font-medium">POHODA (export XML / mServer)</h2>
+        <p className="text-muted-foreground text-sm">
+          Po schválení faktury se odešle přijatá faktura; po nahrání dokladu platby na Drive lze importovat
+          pohyb do agendy Banka. Hodnoty se nastavují v prostředí (Vercel /{" "}
+          <code className="bg-muted rounded px-1 text-xs">apps/web/.env</code>
+          ). Dokumentace:{" "}
+          <a
+            href="https://api.stormware.cz/pohoda/"
+            className="text-primary underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            api.stormware.cz/pohoda
+          </a>
+          .
+        </p>
+        <div className="space-y-2 text-sm">
+          <p>
+            Export přijatých faktur:{" "}
+            <span
+              className={
+                pohoda.invoiceExportConfigured
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-amber-700 dark:text-amber-300"
+              }
+            >
+              {pohoda.invoiceExportConfigured ? "připraveno" : "neúplné"}
+            </span>
+          </p>
+          <p>
+            Import plateb do Banky:{" "}
+            <span
+              className={
+                pohoda.bankImportConfigured
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-amber-700 dark:text-amber-300"
+              }
+            >
+              {pohoda.bankImportConfigured ? "připraveno" : "neúplné"}
+            </span>
+          </p>
+        </div>
+        {!pohoda.invoiceExportConfigured && pohoda.missingForInvoice.length > 0 ? (
+          <p className="text-amber-700 text-sm dark:text-amber-300">
+            Pro faktury doplň:{" "}
+            <code className="bg-muted rounded px-1 text-xs">
+              {pohoda.missingForInvoice.join(", ")}
+            </code>
+          </p>
+        ) : null}
+        {pohoda.invoiceExportConfigured && !pohoda.bankImportConfigured ? (
+          <p className="text-amber-700 text-sm dark:text-amber-300">
+            Pro bankovní pohyby doplň:{" "}
+            <code className="bg-muted rounded px-1 text-xs">
+              POHODA_DEFAULT_BANK_ACCOUNT_IDS
+            </code>{" "}
+            (zkratka účtu v Pohodě, např. KB).
+          </p>
+        ) : null}
+        <ul className="text-muted-foreground list-inside list-disc space-y-1 text-sm">
+          <li>
+            <code>POHODA_MSERVER_URL</code> — URL služby mServer (POST, XML v těle)
+          </li>
+          <li>
+            <code>POHODA_ICO</code> — IČO firmy v obálce <code>dataPack</code>
+          </li>
+          <li>
+            <code>POHODA_APPLICATION</code> — volitelné jméno v atributu application (výchozí
+            CommissionCalc)
+          </li>
+          <li>
+            <code>POHODA_MSERVER_USER</code>, <code>POHODA_MSERVER_PASSWORD</code> — volitelné HTTP
+            Basic
+          </li>
+          <li>
+            <code>POHODA_INVOICE_ACCOUNTING_IDS</code> — volitelné <code>typ:ids</code> účetního
+            předpisu u přijaté faktury (ověř s účetním)
+          </li>
+          <li>
+            <code>POHODA_INVOICE_CLASSIFICATION_VAT_IDS</code> — volitelné DPH klasifikace (
+            <code>typ:ids</code>)
+          </li>
+          <li>
+            <code>POHODA_DEFAULT_BANK_ACCOUNT_IDS</code> — účet v Pohodě pro hlavičku faktury a pro
+            import do Banky
+          </li>
+        </ul>
+        <div className="text-muted-foreground grid gap-2 text-xs sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <span className="block text-[10px] uppercase">POHODA_MSERVER_URL</span>
+            <code className="bg-muted block rounded p-2 break-all">
+              {pohoda.mserverUrl}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">POHODA_ICO</span>
+            <code className="bg-muted block rounded p-2">{pohoda.ico}</code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">POHODA_APPLICATION</span>
+            <code className="bg-muted block rounded p-2">{pohoda.application}</code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">POHODA_MSERVER_USER</span>
+            <code className="bg-muted block rounded p-2">{pohoda.httpUser}</code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">POHODA_MSERVER_PASSWORD</span>
+            <code className="bg-muted block rounded p-2">{pohoda.httpPasswordMasked}</code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">POHODA_INVOICE_ACCOUNTING_IDS</span>
+            <code className="bg-muted block rounded p-2 break-all">
+              {pohoda.invoiceAccountingIds}
+            </code>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase">
+              POHODA_INVOICE_CLASSIFICATION_VAT_IDS
+            </span>
+            <code className="bg-muted block rounded p-2 break-all">
+              {pohoda.invoiceClassificationVatIds}
+            </code>
+          </div>
+          <div className="sm:col-span-2">
+            <span className="block text-[10px] uppercase">POHODA_DEFAULT_BANK_ACCOUNT_IDS</span>
+            <code className="bg-muted block rounded p-2 break-all">
+              {pohoda.defaultBankAccountIds}
+            </code>
+          </div>
+        </div>
       </section>
 
       <section className="space-y-2 rounded-lg border bg-card p-5">
