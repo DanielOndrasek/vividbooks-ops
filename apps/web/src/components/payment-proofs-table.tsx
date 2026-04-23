@@ -10,6 +10,11 @@ export type PaymentProofRowDto = {
   documentId: string;
   proofType: string | null;
   note: string | null;
+  amount: string | null;
+  currency: string | null;
+  variableSymbol: string | null;
+  pohodaExportStatus: string;
+  pohodaExportLastError: string | null;
   driveUrl: string | null;
   /** Hromadné / jednotlivé smazání evidence (nelze, pokud existuje faktura u stejného dokumentu). */
   canDeleteProof: boolean;
@@ -273,6 +278,8 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
               </th>
               <th className="p-3 font-medium">Zpracováno e-mailu</th>
               <th className="p-3 font-medium">Soubor</th>
+              <th className="p-3 font-medium">Částka</th>
+              <th className="p-3 font-medium">POHODA</th>
               <th className="p-3 font-medium">Stav</th>
               <th className="p-3 font-medium">Uloženo</th>
               <th className="p-3 font-medium">Detail</th>
@@ -319,6 +326,19 @@ export function PaymentProofsTable({ rows, canAct }: Props) {
                   </td>
                   <td className="max-w-[140px] truncate p-3" title={p.originalFilename}>
                     {p.originalFilename}
+                  </td>
+                  <td className="text-muted-foreground whitespace-nowrap p-3 text-xs">
+                    {p.amount != null
+                      ? `${p.amount} ${p.currency ?? "CZK"}`
+                      : "—"}
+                    {p.variableSymbol ? (
+                      <span className="block font-mono">VS {p.variableSymbol}</span>
+                    ) : null}
+                  </td>
+                  <td className="p-3 font-mono text-xs">
+                    <span title={p.pohodaExportLastError ?? undefined}>
+                      {p.pohodaExportStatus}
+                    </span>
                   </td>
                   <td className="p-3 font-mono text-xs">{p.documentStatus}</td>
                   <td className="text-muted-foreground whitespace-nowrap p-3">

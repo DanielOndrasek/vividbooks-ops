@@ -6,11 +6,28 @@ import { prisma } from "@/lib/prisma";
 
 const patchSchema = z.object({
   supplierName: z.string().nullable().optional(),
+  supplierICO: z.string().nullable().optional(),
+  supplierDIC: z.string().nullable().optional(),
+  supplierStreet: z.string().nullable().optional(),
+  supplierCity: z.string().nullable().optional(),
+  supplierZip: z.string().nullable().optional(),
+  supplierCountry: z.string().nullable().optional(),
   amountWithoutVat: z.string().nullable().optional(),
   amountWithVat: z.string().nullable().optional(),
+  vatAmount: z.string().nullable().optional(),
+  vatRate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  issueDate: z.string().nullable().optional(),
   invoiceNumber: z.string().nullable().optional(),
   currency: z.string().max(8).nullable().optional(),
+  variableSymbol: z.string().nullable().optional(),
+  constantSymbol: z.string().nullable().optional(),
+  specificSymbol: z.string().nullable().optional(),
+  bankAccount: z.string().nullable().optional(),
+  iban: z.string().nullable().optional(),
+  domesticAccount: z.string().nullable().optional(),
+  bic: z.string().nullable().optional(),
+  documentKind: z.string().max(64).nullable().optional(),
 });
 
 export async function GET(
@@ -40,14 +57,35 @@ export async function GET(
     id: invoice.id,
     documentId: invoice.documentId,
     supplierName: invoice.supplierName,
+    supplierICO: invoice.supplierICO,
+    supplierDIC: invoice.supplierDIC,
+    supplierStreet: invoice.supplierStreet,
+    supplierCity: invoice.supplierCity,
+    supplierZip: invoice.supplierZip,
+    supplierCountry: invoice.supplierCountry,
     amountWithoutVat: invoice.amountWithoutVat?.toString() ?? null,
     amountWithVat: invoice.amountWithVat?.toString() ?? null,
+    vatAmount: invoice.vatAmount?.toString() ?? null,
+    vatRate: invoice.vatRate?.toString() ?? null,
     dueDate: invoice.dueDate?.toISOString() ?? null,
+    issueDate: invoice.issueDate?.toISOString() ?? null,
     invoiceNumber: invoice.invoiceNumber,
     currency: invoice.currency,
-    issueDate: invoice.issueDate?.toISOString() ?? null,
-    supplierICO: invoice.supplierICO,
+    variableSymbol: invoice.variableSymbol,
+    constantSymbol: invoice.constantSymbol,
+    specificSymbol: invoice.specificSymbol,
+    bankAccount: invoice.bankAccount,
+    iban: invoice.iban,
+    domesticAccount: invoice.domesticAccount,
+    bic: invoice.bic,
+    documentKind: invoice.documentKind,
+    invoiceLines: invoice.invoiceLines,
+    missingStructuredLines: invoice.missingStructuredLines,
     extractionConfidence: invoice.extractionConfidence,
+    pohodaExportStatus: invoice.pohodaExportStatus,
+    pohodaExportedAt: invoice.pohodaExportedAt?.toISOString() ?? null,
+    pohodaExternalId: invoice.pohodaExternalId,
+    pohodaExportLastError: invoice.pohodaExportLastError,
     approvedAt: invoice.approvedAt?.toISOString() ?? null,
     approvedBy: invoice.approvedBy,
     rejectionReason: invoice.rejectionReason,
@@ -117,29 +155,64 @@ export async function PATCH(
   }
 
   const d = parsed.data;
-  let dueDate: Date | null | undefined;
-  if (d.dueDate === undefined) {
-    dueDate = undefined;
-  } else if (d.dueDate === null || d.dueDate === "") {
-    dueDate = null;
-  } else {
-    const parsedDate = new Date(d.dueDate);
-    dueDate = Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+
+  function parseOptDate(raw: string | null | undefined): Date | null | undefined {
+    if (raw === undefined) {
+      return undefined;
+    }
+    if (raw === null || raw === "") {
+      return null;
+    }
+    const parsedDate = new Date(raw);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
   }
+
+  const dueDate = parseOptDate(d.dueDate);
+  const issueDate = parseOptDate(d.issueDate);
 
   const updated = await prisma.invoice.update({
     where: { id },
     data: {
       supplierName: d.supplierName ?? undefined,
-      amountWithoutVat:
-        d.amountWithoutVat === undefined
+      supplierICO:
+        d.supplierICO === undefined
           ? undefined
-          : d.amountWithoutVat,
+          : d.supplierICO?.replace(/\D/g, "") || null,
+      supplierDIC: d.supplierDIC ?? undefined,
+      supplierStreet: d.supplierStreet ?? undefined,
+      supplierCity: d.supplierCity ?? undefined,
+      supplierZip: d.supplierZip ?? undefined,
+      supplierCountry: d.supplierCountry ?? undefined,
+      amountWithoutVat:
+        d.amountWithoutVat === undefined ? undefined : d.amountWithoutVat,
       amountWithVat:
         d.amountWithVat === undefined ? undefined : d.amountWithVat,
+      vatAmount: d.vatAmount === undefined ? undefined : d.vatAmount,
+      vatRate: d.vatRate === undefined ? undefined : d.vatRate,
       dueDate: dueDate === undefined ? undefined : dueDate,
+      issueDate: issueDate === undefined ? undefined : issueDate,
       invoiceNumber: d.invoiceNumber ?? undefined,
       currency: d.currency ?? undefined,
+      variableSymbol:
+        d.variableSymbol === undefined
+          ? undefined
+          : d.variableSymbol?.replace(/\D/g, "") || null,
+      constantSymbol:
+        d.constantSymbol === undefined
+          ? undefined
+          : d.constantSymbol?.replace(/\D/g, "") || null,
+      specificSymbol:
+        d.specificSymbol === undefined
+          ? undefined
+          : d.specificSymbol?.replace(/\D/g, "") || null,
+      bankAccount: d.bankAccount ?? undefined,
+      iban:
+        d.iban === undefined
+          ? undefined
+          : d.iban?.replace(/\s/g, "").toUpperCase() || null,
+      domesticAccount: d.domesticAccount ?? undefined,
+      bic: d.bic ?? undefined,
+      documentKind: d.documentKind ?? undefined,
     },
     include: { document: { include: { email: true } } },
   });

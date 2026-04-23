@@ -402,6 +402,11 @@ export async function uploadPaymentReceiptIfConfigured(
         fileName,
       },
     });
+
+    const { runPaymentProofPohodaExportIfConfigured } = await import(
+      "@/services/pohoda/export-payment-proof"
+    );
+    await runPaymentProofPohodaExportIfConfigured(doc.paymentProof.id);
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     const msg = explainDriveStorageError(raw);

@@ -76,6 +76,7 @@ export async function convertInvoiceToPaymentProof(
 
   const documentId = invoice.documentId;
   const note = noteFromInvoice(invoice);
+  const icoDigits = invoice.supplierICO?.replace(/\D/g, "") || null;
 
   await prisma.$transaction([
     prisma.invoice.delete({ where: { id: invoiceId } }),
@@ -84,6 +85,14 @@ export async function convertInvoiceToPaymentProof(
         documentId,
         proofType: "PAYMENT_RECEIPT",
         note,
+        amount: invoice.amountWithVat,
+        currency: invoice.currency,
+        counterpartyName: invoice.supplierName,
+        counterpartyICO: icoDigits,
+        variableSymbol: invoice.variableSymbol?.replace(/\D/g, "") || null,
+        constantSymbol: invoice.constantSymbol?.replace(/\D/g, "") || null,
+        specificSymbol: invoice.specificSymbol?.replace(/\D/g, "") || null,
+        bankAccountNo: invoice.domesticAccount?.trim() || null,
       },
     }),
     prisma.document.update({

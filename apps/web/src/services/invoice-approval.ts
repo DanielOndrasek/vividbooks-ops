@@ -1,6 +1,7 @@
 import { writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { uploadApprovedInvoiceToDrive } from "@/services/drive";
+import { runInvoicePohodaExportIfConfigured } from "@/services/pohoda/export-invoice";
 
 const APPROVABLE_STATUSES = new Set(["PENDING_APPROVAL", "NEEDS_REVIEW"]);
 
@@ -70,6 +71,8 @@ export async function runInvoiceApproval(
       httpStatus: 502,
     };
   }
+
+  await runInvoicePohodaExportIfConfigured(invoiceId);
 
   return {
     ok: true,

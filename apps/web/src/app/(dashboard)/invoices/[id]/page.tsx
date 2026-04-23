@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { DocumentPreview } from "@/components/document-preview";
 import { InvoiceActions } from "@/components/invoice-actions";
-import { InvoiceMetadataForm } from "@/components/invoice-metadata-form";
+import {
+  InvoiceMetadataForm,
+  type InvoiceMetadataInitial,
+} from "@/components/invoice-metadata-form";
+import { PohodaExportRetryButton } from "@/components/pohoda-export-retry-button";
 import { prisma } from "@/lib/prisma";
 import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
 
@@ -85,6 +89,37 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
   const backHref = `/invoices${backQs.toString() ? `?${backQs}` : ""}`;
 
   const previewSrc = `/api/documents/${invoice.documentId}/file`;
+
+  const metadataInitial: InvoiceMetadataInitial = {
+    supplierName: invoice.supplierName,
+    supplierICO: invoice.supplierICO,
+    supplierDIC: invoice.supplierDIC,
+    supplierStreet: invoice.supplierStreet,
+    supplierCity: invoice.supplierCity,
+    supplierZip: invoice.supplierZip,
+    supplierCountry: invoice.supplierCountry,
+    amountWithoutVat: invoice.amountWithoutVat?.toString() ?? null,
+    amountWithVat: invoice.amountWithVat?.toString() ?? null,
+    vatAmount: invoice.vatAmount?.toString() ?? null,
+    vatRate: invoice.vatRate?.toString() ?? null,
+    dueDate: invoice.dueDate?.toISOString() ?? null,
+    issueDate: invoice.issueDate?.toISOString() ?? null,
+    invoiceNumber: invoice.invoiceNumber,
+    currency: invoice.currency,
+    variableSymbol: invoice.variableSymbol,
+    constantSymbol: invoice.constantSymbol,
+    specificSymbol: invoice.specificSymbol,
+    bankAccount: invoice.bankAccount,
+    iban: invoice.iban,
+    domesticAccount: invoice.domesticAccount,
+    bic: invoice.bic,
+    documentKind: invoice.documentKind,
+  };
+
+  const linesPreview =
+    Array.isArray(invoice.invoiceLines) && invoice.invoiceLines.length > 0
+      ? safeStringifyMetadata(invoice.invoiceLines)
+      : null;
   const showActions =
     canAct &&
     (invoice.document.status === "PENDING_APPROVAL" ||
@@ -140,19 +175,62 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
             <InvoiceMetadataForm
               invoiceId={invoice.id}
               canEdit={canEdit && showActions}
-              initial={{
-                supplierName: invoice.supplierName,
-                amountWithoutVat: invoice.amountWithoutVat?.toString() ?? null,
-                amountWithVat: invoice.amountWithVat?.toString() ?? null,
-                dueDate: invoice.dueDate?.toISOString() ?? null,
-                invoiceNumber: invoice.invoiceNumber,
-                currency: invoice.currency,
-              }}
+              initial={metadataInitial}
             />
             <p className="text-muted-foreground text-xs">
               Klasifikace: {formatConfidence(invoice.document.classificationConfidence)} ·
               Extrakce: {formatConfidence(invoice.extractionConfidence)}
+              {invoice.missingStructuredLines
+                ? " · Řádky faktury: pouze souhrn (doporučena kontrola)"
+                : ""}
             </p>
+            {linesPreview && (
+              <details className="text-xs">
+                <summary className="cursor-pointer font-medium">
+                  Extrahované řádky (JSON)
+                </summary>
+                <pre className="bg-muted/50 mt-2 max-h-48 overflow-auto rounded p-2">
+                  {linesPreview}
+                </pre>
+              </details>
+            )}
+          </section>
+
+          <section className="space-y-2 rounded-lg border bg-card p-5">
+            <h2 className="font-medium">Export POHODA</h2>
+            <dl className="grid gap-1 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted-foreground">Stav</dt>
+                <dd className="font-mono text-xs">{invoice.pohodaExportStatus}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Odesláno</dt>
+                <dd className="text-xs">
+                  {invoice.pohodaExportedAt
+                    ? invoice.pohodaExportedAt.toLocaleString("cs-CZ")
+                    : "—"}
+                </dd>
+              </div>
+              {invoice.pohodaExternalId && (
+                <div className="sm:col-span-2">
+                  <dt className="text-muted-foreground">Externí ID / reference</dt>
+                  <dd className="break-all font-mono text-xs">{invoice.pohodaExternalId}</dd>
+                </div>
+              )}
+              {invoice.pohodaExportLastError && (
+                <div className="sm:col-span-2">
+                  <dt className="text-destructive">Poslední chyba</dt>
+                  <dd className="text-destructive text-xs whitespace-pre-wrap">
+                    {invoice.pohodaExportLastError}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            {canAct &&
+              invoice.document.status === "APPROVED" &&
+              invoice.pohodaExportStatus !== "EXPORTED" && (
+                <PohodaExportRetryButton invoiceId={invoice.id} />
+              )}
           </section>
 
           {invoice.driveUrl && (

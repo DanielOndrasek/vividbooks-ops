@@ -2,9 +2,10 @@
  * Dokumenty NEW + UNCLASSIFIED → klasifikace + extrakce → faktury (schválení) / platby (Drive).
  */
 
-import { DocumentStatus, DocumentType } from "@prisma/client";
+import { DocumentStatus, DocumentType, Prisma } from "@prisma/client";
 
 import { writeAuditLog } from "@/lib/audit";
+import type { ExtractionResult } from "@/lib/documentSchemas";
 import { loadDocumentFileBuffer } from "@/lib/document-file-buffer";
 import { prisma } from "@/lib/prisma";
 import {
@@ -39,18 +40,53 @@ function numToDecimalString(n: number | null | undefined): string | null {
   return String(n);
 }
 
-function missingInvoiceCriticalFields(extraction: {
-  supplierName: string | null;
-  amountWithoutVat: number | null;
-  amountWithVat: number | null;
-  dueDate: string | null;
-}): boolean {
+function digitsOnly(raw: string | null | undefined): string | null {
+  const d = raw?.replace(/\D/g, "") ?? "";
+  return d.length > 0 ? d : null;
+}
+
+function hasIcoOrDic(extraction: ExtractionResult): boolean {
+  return Boolean(
+    digitsOnly(extraction.supplierICO) ||
+      extraction.supplierDIC?.trim(),
+  );
+}
+
+function missingInvoiceCriticalFields(extraction: ExtractionResult): boolean {
   return (
     !extraction.supplierName?.trim() ||
+    !extraction.invoiceNumber?.trim() ||
     extraction.amountWithoutVat == null ||
     extraction.amountWithVat == null ||
-    !extraction.dueDate?.trim()
+    !extraction.dueDate?.trim() ||
+    !hasIcoOrDic(extraction)
   );
+}
+
+function missingStructuredInvoiceLines(extraction: ExtractionResult): boolean {
+  return !Array.isArray(extraction.invoiceLines) || extraction.invoiceLines.length === 0;
+}
+
+function czkMissingVariableSymbol(extraction: ExtractionResult): boolean {
+  const cur = (extraction.currency?.trim() || "CZK").toUpperCase();
+  if (cur !== "CZK") {
+    return false;
+  }
+  return !digitsOnly(extraction.variableSymbol);
+}
+
+function paymentReceiptNeedsReview(
+  extraction: ExtractionResult,
+  threshold: number,
+  combinedConfidence: number,
+): boolean {
+  if (combinedConfidence < threshold) {
+    return true;
+  }
+  if (extraction.amountWithVat == null || !Number.isFinite(extraction.amountWithVat)) {
+    return true;
+  }
+  return false;
 }
 
 export type DocumentExtractionJobResult = {
@@ -203,16 +239,34 @@ async function processOneDocument(
       extraction.supplierName,
       extraction.bankAccount,
       extraction.invoiceNumber,
+      extraction.bankMessage,
     ]
       .filter(Boolean)
       .join(" | ")
       .slice(0, 4000);
+
+    const payNeedsReview = paymentReceiptNeedsReview(
+      extraction,
+      threshold,
+      combinedConfidence,
+    );
 
     await prisma.paymentProof.create({
       data: {
         documentId: id,
         proofType: "PAYMENT_RECEIPT",
         note: note || null,
+        paymentDate: parseIsoDate(extraction.paymentDate),
+        amount: numToDecimalString(extraction.amountWithVat),
+        currency: (extraction.currency?.trim() || "CZK").slice(0, 8),
+        counterpartyName: extraction.supplierName,
+        counterpartyICO: digitsOnly(extraction.supplierICO),
+        variableSymbol: digitsOnly(extraction.variableSymbol),
+        constantSymbol: digitsOnly(extraction.constantSymbol),
+        specificSymbol: digitsOnly(extraction.specificSymbol),
+        bankMessage: extraction.bankMessage,
+        bankAccountNo: extraction.domesticAccountNumber?.trim() || null,
+        bankCode: extraction.domesticBankCode?.replace(/\D/g, "") || null,
       },
     });
 
@@ -223,7 +277,7 @@ async function processOneDocument(
         status: DocumentStatus.RECEIVED,
         classificationConfidence: classification.confidence,
         aiRawResponse: rawBundle.slice(0, 65000),
-        needsManualReview: combinedConfidence < threshold,
+        needsManualReview: payNeedsReview,
       },
     });
 
@@ -234,6 +288,7 @@ async function processOneDocument(
       metadata: {
         type: "PAYMENT_RECEIPT",
         combinedConfidence,
+        needsManualReview: payNeedsReview,
       },
     });
 
@@ -242,23 +297,54 @@ async function processOneDocument(
   }
 
   const missingCritical = missingInvoiceCriticalFields(extraction);
+  const missingLines = missingStructuredInvoiceLines(extraction);
+  const czkNoVs = czkMissingVariableSymbol(extraction);
   const needsManualReview =
-    combinedConfidence < threshold || missingCritical;
+    combinedConfidence < threshold ||
+    missingCritical ||
+    missingLines ||
+    czkNoVs;
   const nextStatus = needsManualReview
     ? DocumentStatus.NEEDS_REVIEW
     : DocumentStatus.PENDING_APPROVAL;
+
+  const addr = extraction.supplierAddress;
 
   await prisma.invoice.create({
     data: {
       documentId: id,
       supplierName: extraction.supplierName,
-      supplierICO: extraction.supplierICO,
+      supplierICO: digitsOnly(extraction.supplierICO),
+      supplierDIC: extraction.supplierDIC?.trim() || null,
+      supplierStreet: addr?.street?.trim() || null,
+      supplierCity: addr?.city?.trim() || null,
+      supplierZip: addr?.zip?.trim() || null,
+      supplierCountry: addr?.country?.trim() || null,
       invoiceNumber: extraction.invoiceNumber,
       amountWithVat: numToDecimalString(extraction.amountWithVat),
       amountWithoutVat: numToDecimalString(extraction.amountWithoutVat),
+      vatAmount: numToDecimalString(extraction.vatAmount),
+      vatRate: numToDecimalString(extraction.vatRate),
       currency: (extraction.currency?.trim() || "CZK").slice(0, 8),
       issueDate: parseIsoDate(extraction.issueDate),
       dueDate: parseIsoDate(extraction.dueDate),
+      variableSymbol: digitsOnly(extraction.variableSymbol),
+      constantSymbol: digitsOnly(extraction.constantSymbol),
+      specificSymbol: digitsOnly(extraction.specificSymbol),
+      bankAccount: extraction.bankAccount?.trim() || null,
+      iban: extraction.iban?.replace(/\s/g, "").toUpperCase() || null,
+      domesticAccount:
+        extraction.domesticAccount?.trim() ||
+        extraction.bankAccount?.trim() ||
+        null,
+      bic: extraction.bic?.trim() || null,
+      documentKind: extraction.documentKind?.trim().slice(0, 64) || null,
+      ...(extraction.invoiceLines !== null
+        ? {
+            invoiceLines: extraction.invoiceLines as Prisma.InputJsonValue,
+          }
+        : {}),
+      missingStructuredLines: missingLines,
       extractionConfidence: combinedConfidence,
     },
   });
@@ -283,6 +369,8 @@ async function processOneDocument(
       combinedConfidence,
       needsManualReview,
       missingCritical,
+      missingStructuredLines: missingLines,
+      czkMissingVariableSymbol: czkNoVs,
     },
   });
 }

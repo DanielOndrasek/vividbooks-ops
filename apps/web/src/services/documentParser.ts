@@ -133,6 +133,8 @@ Vrať POUZE platný JSON bez markdownu s těmito klíči (použij null pokud nel
 {
   "supplierName": string | null,
   "supplierICO": string | null,
+  "supplierDIC": string | null,
+  "supplierAddress": { "street": string | null, "city": string | null, "zip": string | null, "country": string | null } | null,
   "invoiceNumber": string | null,
   "amountWithVat": number | null,
   "amountWithoutVat": number | null,
@@ -142,15 +144,30 @@ Vrať POUZE platný JSON bez markdownu s těmito klíči (použij null pokud nel
   "issueDate": string | null,
   "dueDate": string | null,
   "variableSymbol": string | null,
+  "constantSymbol": string | null,
+  "specificSymbol": string | null,
   "bankAccount": string | null,
+  "iban": string | null,
+  "domesticAccount": string | null,
+  "domesticAccountNumber": string | null,
+  "domesticBankCode": string | null,
+  "bic": string | null,
+  "documentKind": string | null,
+  "invoiceLines": [ { "text": string | null, "quantity": number | null, "unit": string | null, "unitPriceWithoutVat": number | null, "vatRate": number | null, "lineTotalWithoutVat": number | null, "lineTotalWithVat": number | null } ] | null,
+  "paymentDate": string | null,
+  "bankMessage": string | null,
   "confidence": number
 }
 
 Pravidla:
 - Částky jako čísla (např. 12345.67), bez mezer a měny v čísle.
 - currency: ISO kód (CZK, EUR, …), výchozí CZK pokud je zjevné.
-- issueDate, dueDate: ISO 8601 datum (YYYY-MM-DD) pokud jde; jinak null.
-- IČO jen číslice, bez mezer.
+- issueDate, dueDate, paymentDate: ISO 8601 datum (YYYY-MM-DD) pokud jde; jinak null.
+- IČO a čísla symbolů jen číslice, bez mezer. DIČ včetně předpony státu (např. CZ12345678).
+- documentKind: např. STANDARD_INVOICE, PROFORMA, CREDIT_NOTE, ADVANCE pokud to z dokladu plyne, jinak null.
+- invoiceLines: pole řádků faktury; pokud jsou jen souhrnné částky bez řádků, vrať null nebo prázdné pole.
+- U platebního příkazu / výpisu: domesticAccountNumber = číslo účtu protistrany (bez kódu banky), domesticBankCode = čtyřmístný kód banky.
+- bankMessage = text zprávy pro příjemce / poznámka k platbě.
 - confidence: 0–1, celková jistota extrakce.`;
 
 export async function classifyDocument(
@@ -169,8 +186,8 @@ export async function extractInvoiceData(
 ): Promise<ExtractionResult> {
   const hint =
     docKind === "PAYMENT_RECEIPT"
-      ? "Jde o doklad o přijaté platbě — extrahuj plátce jako supplierName/supplierICO pokud jde, částku platby do amountWithVat."
-      : "Jde o fakturu k úhradě — standardní pole dodavatele a splatnosti.";
+      ? "Jde o doklad o přijaté platbě — plátce/protistrana: supplierName, supplierICO; částku platby do amountWithVat; paymentDate; VS/KS/SS; domesticAccountNumber a domesticBankCode z protiúčtu; bankMessage z textu platby. invoiceLines nech null."
+      : "Jde o fakturu k úhradě — vyplň dodavatele, DIČ, adresu pokud je v tisku, symboly, účet (iban/domesticAccount), řádky faktury pokud jsou uvedeny.";
   const text = await completeWithVision(
     fileBuffer,
     mediaType,
