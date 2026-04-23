@@ -6,6 +6,7 @@ import { DocumentPreview } from "@/components/document-preview";
 import { InvoiceActions } from "@/components/invoice-actions";
 import { InvoiceMetadataForm } from "@/components/invoice-metadata-form";
 import { prisma } from "@/lib/prisma";
+import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -89,8 +90,18 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
     (invoice.document.status === "PENDING_APPROVAL" ||
       invoice.document.status === "NEEDS_REVIEW");
 
+  const canConvertToPayment =
+    canAct &&
+    isInvoiceConvertibleToPaymentProof(
+      invoice.document.documentType,
+      invoice.document.status,
+    );
+
   const showInvoiceActionBlock =
-    canAct && (showActions || invoice.document.status !== "APPROVED");
+    canAct &&
+    (showActions ||
+      canConvertToPayment ||
+      invoice.document.status !== "APPROVED");
 
   return (
     <div className="space-y-8">
@@ -182,6 +193,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
                 documentStatus={invoice.document.status}
                 canAct={canAct}
                 showApproveReject={showActions}
+                canConvertToPayment={canConvertToPayment}
                 afterDeleteHref={backHref}
               />
             </section>
