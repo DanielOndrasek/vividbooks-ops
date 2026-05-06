@@ -35,3 +35,7 @@ Z monorepo kořene repozitáře: `npm run dev` (spustí tento workspace).
 ## Cron (Vercel)
 
 V `vercel.json` jsou naplánované `GET` joby s hlavičkou `Authorization: Bearer CRON_SECRET`.
+
+## Migrace databáze v produkci
+
+Při **Production** deployi na Vercelu se před sestavením Next.js spustí `prisma migrate deploy` (viz `scripts/vercel-build.mjs`). Pokud by build spadl na chybějícím sloupci (starší nasazení bez migrace), můžeš migraci spustit hned z počítače: `npm run db:migrate:prod` a `DATABASE_URL` z Vercelu (návod v `scripts/migrate-prod.mjs`).
