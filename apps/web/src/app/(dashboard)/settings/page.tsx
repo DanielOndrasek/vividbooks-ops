@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
+import { GmailDiagnoseForm } from "@/components/gmail-diagnose-form";
 import { PipedriveSchemaExplorer } from "@/components/pipedrive-schema-explorer";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
@@ -216,7 +217,10 @@ export default async function SettingsPage() {
           </code>
         </p>
         {canRunJobs ? (
-          <PollEmailButton />
+          <div className="space-y-3">
+            <PollEmailButton />
+            <GmailDiagnoseForm />
+          </div>
         ) : (
           <p className="text-muted-foreground text-sm">
             Ruční stahování jen administrátor nebo schvalovatel.

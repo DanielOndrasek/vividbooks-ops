@@ -26,6 +26,16 @@ export type EmailPollResult = {
   messagesScanned: number;
   documentsCreated: number;
   skippedDuplicates: number;
+  perMessage: Array<{
+    gmailMessageId: string;
+    subject: string;
+    senderEmail: string | null;
+    senderHeader: string;
+    eligibleAttachments: number;
+    attachmentFilenames: string[];
+    documentsCreated: number;
+    skippedDuplicates: number;
+  }>;
   /** Gmail search query (diagnostics). */
   queryUsed: string;
   /** When true, only unread messages match — read mail won’t reappear after removing „Zpracováno“ only. */
@@ -71,6 +81,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
     senderEmail: string | null;
     senderHeader: string;
     eligibleAttachments: number;
+    attachmentFilenames: string[];
     documentsCreated: number;
     skippedDuplicates: number;
   }> = [];
@@ -165,6 +176,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         senderEmail: meta.senderEmail,
         senderHeader: sender.slice(0, 500),
         eligibleAttachments: attachments.length,
+        attachmentFilenames: attachments.map((a) => `${a.filename} (${a.mimeType})`),
         documentsCreated: msgDocs,
         skippedDuplicates: msgSkipped,
       });
@@ -201,6 +213,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       messagesScanned: messageIds.length,
       documentsCreated,
       skippedDuplicates,
+      perMessage,
       queryUsed: buildUnprocessedQuery(),
       onlyUnread: gmailOnlyUnread(),
     };
