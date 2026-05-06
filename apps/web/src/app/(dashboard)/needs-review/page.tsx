@@ -6,6 +6,7 @@ import {
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { prisma } from "@/lib/prisma";
 import { getDocumentReviewCapabilities } from "@/services/document-review-resolve";
+import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,9 @@ export default async function NeedsReviewPage() {
       canConfirmPayment: caps.canConfirmPayment,
       canDismiss: caps.canDismiss,
       canRejectInvoice: caps.canRejectInvoice,
+      canConvertToPaymentProof:
+        !!d.invoice?.id &&
+        isInvoiceConvertibleToPaymentProof(d.documentType, d.status),
       canDeleteDocument: canAct && d.status !== "APPROVED",
     };
   });
