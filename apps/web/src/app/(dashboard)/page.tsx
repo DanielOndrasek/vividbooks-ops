@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 type MonthlyDownloadsRow = {
   key: string;
   label: string;
+  rangeLabel: string;
   invoices: number;
   paymentProofs: number;
   invoiceAmountWithoutVat: number;
@@ -53,6 +54,32 @@ function dateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function addDays(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+}
+
+function startOfWeekMonday(d: Date): Date {
+  const day = d.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  return addDays(d, offset);
+}
+
+function endOfWeekSunday(d: Date): Date {
+  return addDays(startOfWeekMonday(d), 6);
+}
+
+function earlierDate(a: Date, b: Date): Date {
+  return a.getTime() <= b.getTime() ? a : b;
+}
+
+function laterDate(a: Date, b: Date): Date {
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
+function shortDate(d: Date): string {
+  return d.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit" });
+}
+
 function decimalToNumber(value: { toString(): string } | null | undefined): number {
   if (value == null) {
     return 0;
@@ -73,26 +100,37 @@ function buildCurrentMonthRows(
   now: Date,
   docs: MonthlyDocumentForReport[],
 ): MonthlyDownloadsRow[] {
-  const start = startOfCurrentMonth(now);
+  const monthStart = startOfCurrentMonth(now);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const byDay = new Map<string, MonthlyDownloadsRow>();
+  const byWeek = new Map<string, MonthlyDownloadsRow>();
+  let weekIndex = 1;
 
-  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-    const key = dateKey(d);
-    byDay.set(key, {
+  for (let weekStart = new Date(monthStart); weekStart <= today;) {
+    const weekEnd = earlierDate(endOfWeekSunday(weekStart), today);
+    const key = dateKey(weekStart);
+    byWeek.set(key, {
       key,
-      label: d.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit" }),
+      label: `${weekIndex}. týden`,
+      rangeLabel: `${shortDate(weekStart)}–${shortDate(weekEnd)}`,
       invoices: 0,
       paymentProofs: 0,
       invoiceAmountWithoutVat: 0,
       invoiceAmountWithVat: 0,
       paymentProofAmount: 0,
     });
+    weekIndex += 1;
+    weekStart = addDays(weekEnd, 1);
   }
 
   for (const doc of docs) {
-    const key = dateKey(doc.createdAt);
-    const row = byDay.get(key);
+    const docDay = new Date(
+      doc.createdAt.getFullYear(),
+      doc.createdAt.getMonth(),
+      doc.createdAt.getDate(),
+    );
+    const groupStart = laterDate(startOfWeekMonday(docDay), monthStart);
+    const key = dateKey(groupStart);
+    const row = byWeek.get(key);
     if (!row) {
       continue;
     }
@@ -106,7 +144,7 @@ function buildCurrentMonthRows(
     }
   }
 
-  return [...byDay.values()];
+  return [...byWeek.values()];
 }
 
 function sumMonthlyDownloads(rows: MonthlyDownloadsRow[]) {
@@ -319,8 +357,8 @@ export default async function DashboardPage() {
               Stažené doklady za aktuální měsíc
             </h2>
             <p className="text-muted-foreground mt-1 text-sm">
-              Přehled podle data stažení do aplikace ({monthLabel}) — faktury a
-              doklady o platbě zvlášť.
+              Týdenní přehled podle data stažení do aplikace ({monthLabel}) —
+              faktury a doklady o platbě zvlášť.
             </p>
           </div>
         </div>
@@ -374,21 +412,21 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mt-6 overflow-x-auto">
-          <div className="min-w-[720px]">
-            <div className="flex h-52 items-end gap-2 border-b border-l px-3 pt-8">
+          <div className="min-w-[420px]">
+            <div className="flex h-52 items-end gap-6 border-b border-l px-6 pt-8">
               {monthlyRows.map((row) => (
                 <div
                   key={row.key}
-                  className="flex h-full min-w-0 flex-1 items-end justify-center gap-1"
+                  className="flex h-full min-w-0 flex-1 items-end justify-center gap-2"
                 >
-                  <div className="flex h-full w-3 items-end">
+                  <div className="flex h-full w-8 items-end">
                     {row.invoices > 0 ? (
                       <div
                         className="bg-primary/80 relative w-full rounded-t"
                         style={{
                           height: `${Math.max(6, (row.invoices / monthlyMax) * 100)}%`,
                         }}
-                        title={`${row.label}: faktury ${row.invoices}`}
+                        title={`${row.label} (${row.rangeLabel}): faktury ${row.invoices}`}
                       >
                         <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
                           {row.invoices}
@@ -396,7 +434,7 @@ export default async function DashboardPage() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="flex h-full w-3 items-end">
+                  <div className="flex h-full w-8 items-end">
                     {row.paymentProofs > 0 ? (
                       <div
                         className="relative w-full rounded-t bg-amber-500/80"
@@ -406,7 +444,7 @@ export default async function DashboardPage() {
                             (row.paymentProofs / monthlyMax) * 100,
                           )}%`,
                         }}
-                        title={`${row.label}: doklady o platbě ${row.paymentProofs}`}
+                        title={`${row.label} (${row.rangeLabel}): doklady o platbě ${row.paymentProofs}`}
                       >
                         <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
                           {row.paymentProofs}
@@ -417,10 +455,11 @@ export default async function DashboardPage() {
                 </div>
               ))}
             </div>
-            <div className="text-muted-foreground mt-2 flex gap-2 px-3 text-[10px]">
+            <div className="text-muted-foreground mt-2 flex gap-6 px-6 text-[10px]">
               {monthlyRows.map((row) => (
-                <div key={row.key} className="min-w-0 flex-1 text-center">
-                  {row.label}
+                <div key={row.key} className="min-w-0 flex-1 text-center leading-tight">
+                  <div>{row.label}</div>
+                  <div>{row.rangeLabel}</div>
                 </div>
               ))}
             </div>
@@ -445,12 +484,13 @@ export default async function DashboardPage() {
         </div>
 
         <details className="mt-5 text-sm">
-          <summary className="cursor-pointer font-medium">Denní tabulka</summary>
+          <summary className="cursor-pointer font-medium">Týdenní tabulka</summary>
           <div className="mt-3 max-h-72 overflow-auto rounded-lg border">
             <table className="min-w-[980px] w-full text-left text-xs">
               <thead className="bg-muted/50 sticky top-0">
                 <tr>
-                  <th className="p-2 font-medium">Den</th>
+                  <th className="p-2 font-medium">Týden</th>
+                  <th className="p-2 font-medium">Období</th>
                   <th className="p-2 text-right font-medium">Faktury</th>
                   <th className="p-2 text-right font-medium">Doklady o platbě</th>
                   <th className="p-2 text-right font-medium">Celkem</th>
@@ -463,6 +503,7 @@ export default async function DashboardPage() {
                 {monthlyRows.map((row) => (
                   <tr key={row.key} className="border-t">
                     <td className="p-2">{row.label}</td>
+                    <td className="p-2">{row.rangeLabel}</td>
                     <td className="p-2 text-right tabular-nums">{row.invoices}</td>
                     <td className="p-2 text-right tabular-nums">{row.paymentProofs}</td>
                     <td className="p-2 text-right tabular-nums">
