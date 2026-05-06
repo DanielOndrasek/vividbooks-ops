@@ -21,6 +21,8 @@ export type NeedsReviewRowDto = {
   canConfirmPayment: boolean;
   canDismiss: boolean;
   canRejectInvoice: boolean;
+  /** Fakturu ve stavu ke kontrole lze převést na doklad o platbě (sekce Platby). */
+  canConvertToPaymentProof: boolean;
   canDeleteDocument: boolean;
 };
 
@@ -199,6 +201,37 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
     }
   }
 
+  async function convertToPaymentProof(documentId: string, invoiceId: string) {
+    const ok = window.confirm(
+      "Převést tuto fakturu na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci Platby (a případně se nahraje na Drive do složky plateb).",
+    );
+    if (!ok) {
+      return;
+    }
+    setBusyDoc(`inv-convert:${invoiceId}`);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/invoices/${invoiceId}/convert-to-payment-proof`,
+        { method: "POST", cache: "no-store" },
+      );
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error || "Převod selhal.");
+        return;
+      }
+      setMessage("Doklad převeden na platbu. Zkontrolujte záložku Platby.");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+      await router.refresh();
+    } finally {
+      setBusyDoc(null);
+    }
+  }
+
   async function rejectInvoice(invoiceId: string) {
     const reason = window.prompt("Důvod zamítnutí (volitelné):") ?? "";
     setBusyDoc(`inv:${invoiceId}`);
@@ -272,7 +305,8 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
               const b =
                 bulkDeleting ||
                 busyDoc === d.documentId ||
-                busyDoc === `inv:${d.invoiceId ?? ""}`;
+                busyDoc === `inv:${d.invoiceId ?? ""}` ||
+                busyDoc === `inv-convert:${d.invoiceId ?? ""}`;
               return (
                 <tr key={d.documentId} className="border-b last:border-0">
                   {canAct && (
@@ -355,6 +389,21 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
                             {busyDoc === d.documentId ? "…" : "Platba v pořádku"}
                           </Button>
                         )}
+                        {d.canConvertToPaymentProof && d.invoiceId && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="secondary"
+                            disabled={b}
+                            onClick={() =>
+                              void convertToPaymentProof(d.documentId, d.invoiceId!)
+                            }
+                          >
+                            {busyDoc === `inv-convert:${d.invoiceId}`
+                              ? "…"
+                              : "Převést na doklad"}
+                          </Button>
+                        )}
                         {d.canRequeueAi && (
                           <Button
                             type="button"
@@ -411,6 +460,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
                         )}
                         {!d.canConfirmInvoice &&
                           !d.canConfirmPayment &&
+                          !d.canConvertToPaymentProof &&
                           !d.canRequeueAi &&
                           !d.canRejectInvoice &&
                           !d.canDismiss &&
