@@ -33,9 +33,8 @@ export function PollEmailButton() {
           `duplicit ${sk}.`;
         if (ms === 0 && data.onlyUnread) {
           text +=
-            "\n\nŽádná zpráva nevyhověla dotazu. Častý důvod: zpráva je už přečtená — aplikace při zpracování odebere nepřečtení. " +
-            "Odebrání jen štítku „Zpracováno“ nestačí: v Gmailu ji označ znovu jako nepřečtenou, nebo na Vercelu nastav GMAIL_ONLY_UNREAD=0 " +
-            "(stáhne i přečtené bez štítku zpracováno; může jich být víc).";
+            "\n\nŽádná zpráva nevyhověla dotazu. Máš zapnutý režim jen nepřečtené (GMAIL_ONLY_UNREAD=1) — přečtené zprávy neprojdou. " +
+            "Odeber tuto proměnnou na Vercelu / nenastavuj ji, nebo v Gmailu zprávu označ jako nepřečtenou.";
         }
         if (ms > 0 && dc === 0 && sk > 0) {
           text +=

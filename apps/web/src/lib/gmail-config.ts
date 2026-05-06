@@ -58,14 +58,16 @@ export function gmailPollMaxResults() {
  * Není tam samostatná konfigurace „stahuj z adresy X“ — ta adresa = ten účet, pod kterým
  * jsi vygeneroval refresh token (npm run gmail:token).
  *
- * Výchozí: brát jen nepřečtené (`is:unread`). Vypnout: GMAIL_ONLY_UNREAD=0
+ * Volitelně `is:unread`: nastav GMAIL_ONLY_UNREAD=1 (nebo true). Výchozí je bez tohoto filtru —
+ * přečtenost e-mailu nebrání opakovanému stažení po odebrání štítku Zpracováno.
  */
 export function gmailOnlyUnread(): boolean {
-  const v = (process.env.GMAIL_ONLY_UNREAD ?? "1").trim().toLowerCase();
-  if (v === "0" || v === "false" || v === "no" || v === "off") {
+  const raw = process.env.GMAIL_ONLY_UNREAD?.trim() ?? "";
+  if (!raw) {
     return false;
   }
-  return true;
+  const v = raw.toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 /**
