@@ -171,7 +171,7 @@ export default async function DashboardPage() {
   const monthStart = startOfCurrentMonth(now);
   const nextMonthStart = startOfNextMonth(now);
 
-  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs, monthDocs] =
+  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs] =
     await Promise.all([
       prisma.invoice.count({
         where: {
@@ -198,30 +198,38 @@ export default async function DashboardPage() {
           metadata: true,
         },
       }),
-      prisma.document.findMany({
-        where: {
-          createdAt: { gte: monthStart, lt: nextMonthStart },
-          documentType: {
-            in: [DocumentType.INVOICE, DocumentType.PAYMENT_RECEIPT],
-          },
-        },
-        select: {
-          createdAt: true,
-          documentType: true,
-          invoice: {
-            select: {
-              amountWithoutVat: true,
-              amountWithVat: true,
-            },
-          },
-          paymentProof: {
-            select: {
-              amount: true,
-            },
-          },
-        },
-      }),
     ]);
+
+  let monthDocs: MonthlyDocumentForReport[] = [];
+  let monthlyReportError: string | null = null;
+  try {
+    monthDocs = await prisma.document.findMany({
+      where: {
+        createdAt: { gte: monthStart, lt: nextMonthStart },
+        documentType: {
+          in: [DocumentType.INVOICE, DocumentType.PAYMENT_RECEIPT],
+        },
+      },
+      select: {
+        createdAt: true,
+        documentType: true,
+        invoice: {
+          select: {
+            amountWithoutVat: true,
+            amountWithVat: true,
+          },
+        },
+        paymentProof: {
+          select: {
+            amount: true,
+          },
+        },
+      },
+    });
+  } catch (e) {
+    console.error("[dashboard] monthly report failed", e);
+    monthlyReportError = e instanceof Error ? e.message : String(e);
+  }
   const monthlyRows = buildCurrentMonthRows(now, monthDocs);
   const monthlyTotals = sumMonthlyDownloads(monthlyRows);
   const monthlyMax = Math.max(
@@ -316,6 +324,12 @@ export default async function DashboardPage() {
             </p>
           </div>
         </div>
+        {monthlyReportError ? (
+          <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            Report se teď nepodařilo načíst. Ostatní části nástěnky jsou dostupné;
+            přesnou příčinu ukládáme do server logu.
+          </p>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border bg-muted/20 p-4">
