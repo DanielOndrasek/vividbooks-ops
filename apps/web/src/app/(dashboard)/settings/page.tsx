@@ -188,6 +188,12 @@ export default async function SettingsPage() {
             vypnout <code>0</code>).
           </li>
           <li>
+            Po stažení dostane zpráva štítek „zpracováno“ a v Gmailu se označí jako{" "}
+            <strong>přečtená</strong>. Když štítek zpracováno odebereš a chceš úlohu spustit znovu,
+            musíš zprávu v Gmailu znovu označit jako <strong>nepřečtenou</strong> — jinak ji dotaz s{" "}
+            <code>is:unread</code> nenajde.
+          </li>
+          <li>
             <code>GMAIL_DELIVERED_TO</code> — jen u pošty přeposlané/aliasu do jiné schránky. U{" "}
             <strong>samostatného</strong> účtu (např. jen HR) nech prázdné a vygeneruj token přihlášením
             jako tento účet.
