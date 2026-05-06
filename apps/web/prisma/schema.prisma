@@ -135,7 +135,10 @@ model Email {
   id             String      @id @default(cuid())
   gmailMessageId String      @unique
   subject        String
+  /// Kompletní hlavička From (pro zobrazení).
   sender         String
+  /// Rozpoznaná e-mailová adresa odesílatele (pro filtry a logy).
+  senderEmail    String?
   receivedAt     DateTime
   processedAt    DateTime?
   status         EmailStatus @default(PENDING)
@@ -143,6 +146,8 @@ model Email {
   updatedAt      DateTime    @updatedAt
 
   documents Document[]
+
+  @@index([senderEmail])
 }
 
 model Document {

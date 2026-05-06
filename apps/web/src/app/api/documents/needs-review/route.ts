@@ -33,6 +33,7 @@ export async function GET() {
       classificationConfidence: d.classificationConfidence,
       emailSubject: d.email.subject,
       emailSender: d.email.sender,
+      emailSenderAddress: d.email.senderEmail,
       receivedAt: d.email.receivedAt.toISOString(),
       invoiceId: d.invoice?.id ?? null,
     })),

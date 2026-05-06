@@ -60,6 +60,15 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
 
   let documentsCreated = 0;
   let skippedDuplicates = 0;
+  const perMessage: Array<{
+    gmailMessageId: string;
+    subject: string;
+    senderEmail: string | null;
+    senderHeader: string;
+    eligibleAttachments: number;
+    documentsCreated: number;
+    skippedDuplicates: number;
+  }> = [];
 
   try {
     for (const messageId of messageIds) {
@@ -77,14 +86,19 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
           gmailMessageId: messageId,
           subject,
           sender,
+          senderEmail: meta.senderEmail,
           receivedAt: meta.emailReceivedAt,
           status: "PENDING",
         },
         update: {
           subject,
           sender,
+          senderEmail: meta.senderEmail,
         },
       });
+
+      let msgDocs = 0;
+      let msgSkipped = 0;
 
       for (const att of attachments) {
         const existingPair = await prisma.document.findUnique({
@@ -97,6 +111,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         });
         if (existingPair) {
           skippedDuplicates += 1;
+          msgSkipped += 1;
           continue;
         }
 
@@ -108,6 +123,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         });
         if (existingHash) {
           skippedDuplicates += 1;
+          msgSkipped += 1;
           await writeAuditLog({
             entityType: "Email",
             entityId: email.id,
@@ -115,6 +131,8 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
             metadata: {
               gmailAttachmentId: att.attachmentId,
               existingDocumentId: existingHash.id,
+              senderEmail: meta.senderEmail,
+              subject: subject.slice(0, 300),
             },
           });
           continue;
@@ -133,7 +151,18 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
           },
         });
         documentsCreated += 1;
+        msgDocs += 1;
       }
+
+      perMessage.push({
+        gmailMessageId: messageId,
+        subject: subject.slice(0, 500),
+        senderEmail: meta.senderEmail,
+        senderHeader: sender.slice(0, 500),
+        eligibleAttachments: attachments.length,
+        documentsCreated: msgDocs,
+        skippedDuplicates: msgSkipped,
+      });
 
       await prisma.email.update({
         where: { id: email.id },
@@ -152,9 +181,12 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         status: "completed",
         completedAt: new Date(),
         metadata: {
+          query: buildUnprocessedQuery(),
+          messageIds,
           messagesScanned: messageIds.length,
           documentsCreated,
           skippedDuplicates,
+          perMessage,
         },
       },
     });
@@ -172,6 +204,11 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         status: "failed",
         completedAt: new Date(),
         error: err instanceof Error ? err.message : String(err),
+        metadata: {
+          query: buildUnprocessedQuery(),
+          messageIds,
+          partialPerMessage: perMessage,
+        },
       },
     });
     throw err;

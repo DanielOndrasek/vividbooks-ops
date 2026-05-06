@@ -245,15 +245,36 @@ export async function markAsProcessed(
   });
 }
 
+/**
+ * Z hlavičky From (např. `Acme <faktury@acme.cz>`) izoluje adresu pro logy a filtry.
+ */
+export function parseSenderEmail(fromHeader: string): string | null {
+  const raw = fromHeader.trim();
+  if (!raw) {
+    return null;
+  }
+  const angle = raw.match(/<([^<>]+)>/);
+  const candidate = (angle ? angle[1] : raw).trim().replace(/^mailto:/i, "");
+  if (!candidate) {
+    return null;
+  }
+  if (!/^[^\s@<>]+@[^\s@<>]+$/.test(candidate)) {
+    return null;
+  }
+  return candidate.toLowerCase();
+}
+
 export function parseMessageMeta(message: gmail_v1.Schema$Message): {
   emailFrom: string;
   emailSubject: string;
   emailReceivedAt: Date;
+  senderEmail: string | null;
 } {
   const headers = message.payload?.headers;
   const emailFrom = getHeader(headers, "From");
   const emailSubject = getHeader(headers, "Subject");
   const internalMs = message.internalDate ? Number(message.internalDate) : Date.now();
   const emailReceivedAt = new Date(Number.isFinite(internalMs) ? internalMs : Date.now());
-  return { emailFrom, emailSubject, emailReceivedAt };
+  const senderEmail = parseSenderEmail(emailFrom);
+  return { emailFrom, emailSubject, emailReceivedAt, senderEmail };
 }
