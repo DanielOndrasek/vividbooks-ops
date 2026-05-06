@@ -17,6 +17,8 @@ type Props = {
   canConvertToPayment?: boolean;
   /** Kam přesměrovat po úspěšném smazání dokladu (včetně faktury v DB) */
   afterDeleteHref?: string;
+  /** Po schválení / zamítnutí / převodu na platbu — jinak zůstane na stránce (refresh). */
+  afterActionHref?: string;
 };
 
 type Busy = false | "approve" | "reject" | "delete" | "convert";
@@ -29,6 +31,7 @@ export function InvoiceActions({
   showApproveReject,
   canConvertToPayment = false,
   afterDeleteHref = "/invoices",
+  afterActionHref,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<Busy>(false);
@@ -53,7 +56,11 @@ export function InvoiceActions({
           ? `Schváleno. Odkaz na Drive byl uložen.`
           : "Schváleno.",
       );
-      await router.refresh();
+      if (afterActionHref) {
+        router.push(afterActionHref);
+      } else {
+        await router.refresh();
+      }
     } finally {
       setBusy(false);
     }
@@ -76,7 +83,11 @@ export function InvoiceActions({
         return;
       }
       setMessage("Zamítnuto.");
-      await router.refresh();
+      if (afterActionHref) {
+        router.push(afterActionHref);
+      } else {
+        await router.refresh();
+      }
     } finally {
       setBusy(false);
     }
@@ -102,7 +113,7 @@ export function InvoiceActions({
         return;
       }
       setMessage("Doklad převeden na platbu.");
-      router.push("/payment-proofs");
+      router.push(afterActionHref ?? "/payment-proofs");
     } finally {
       setBusy(false);
     }
