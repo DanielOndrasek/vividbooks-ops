@@ -27,6 +27,31 @@ const ALLOWED_MIME = new Set([
   "image/jpg",
 ]);
 
+function mimeFromFilename(filename: string): string | null {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".pdf")) {
+    return "application/pdf";
+  }
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  return null;
+}
+
+function eligibleMimeType(rawMimeType: string, filename: string): string | null {
+  const mime = rawMimeType.toLowerCase();
+  const normMime = mime === "image/jpg" ? "image/jpeg" : mime;
+  if (ALLOWED_MIME.has(normMime)) {
+    return normMime === "image/jpg" ? "image/jpeg" : normMime;
+  }
+  // Někteří odesílatelé posílají PDF jako application/octet-stream.
+  // U faktur je přípona souboru spolehlivější než MIME hlavička z Gmailu.
+  return mimeFromFilename(filename);
+}
+
 function getOAuth2Client() {
   assertGmailConfigured();
   const { clientId, clientSecret, refreshToken } = getGmailOAuthCredentials();
@@ -146,6 +171,49 @@ export type EligibleAttachment = {
   mimeType: string;
 };
 
+export type GmailAttachmentPartSummary = {
+  filename: string;
+  mimeType: string;
+  normalizedMimeType: string | null;
+  hasAttachmentId: boolean;
+  eligible: boolean;
+  reason: string | null;
+};
+
+export function listAttachmentPartSummaries(
+  message: gmail_v1.Schema$Message,
+): GmailAttachmentPartSummary[] {
+  const payload = message.payload;
+  if (!payload) {
+    return [];
+  }
+  const out: GmailAttachmentPartSummary[] = [];
+  walkParts(payload, (part) => {
+    const rawFilename = part.filename || "";
+    const rawMime = part.mimeType ?? "";
+    const attachmentId = part.body?.attachmentId;
+    if (!rawFilename && !attachmentId) {
+      return;
+    }
+    const filename = safeFileName(rawFilename || `attachment.${extensionForMime(rawMime)}`);
+    const normalizedMimeType = eligibleMimeType(rawMime, rawFilename ? filename : "");
+    const eligible = Boolean(attachmentId && normalizedMimeType);
+    out.push({
+      filename,
+      mimeType: rawMime || "application/octet-stream",
+      normalizedMimeType,
+      hasAttachmentId: Boolean(attachmentId),
+      eligible,
+      reason: eligible
+        ? null
+        : !attachmentId
+          ? "část nemá attachmentId"
+          : "nepodporovaný typ/přípona",
+    });
+  });
+  return out;
+}
+
 export function listEligibleAttachments(
   message: gmail_v1.Schema$Message,
 ): EligibleAttachment[] {
@@ -155,17 +223,18 @@ export function listEligibleAttachments(
   }
   const out: EligibleAttachment[] = [];
   walkParts(payload, (part) => {
-    const mime = (part.mimeType ?? "").toLowerCase();
-    const normMime = mime === "image/jpg" ? "image/jpeg" : mime;
-    if (!ALLOWED_MIME.has(normMime)) {
+    const rawMime = (part.mimeType ?? "").toLowerCase();
+    const rawFilename = part.filename || "";
+    const filename =
+      safeFileName(rawFilename || `attachment.${extensionForMime(rawMime)}`);
+    const normMime = eligibleMimeType(rawMime, rawFilename ? filename : "");
+    if (!normMime) {
       return;
     }
     const attachmentId = part.body?.attachmentId;
     if (!attachmentId) {
       return;
     }
-    const filename =
-      safeFileName(part.filename || `attachment.${extensionForMime(normMime)}`);
     out.push({
       attachmentId,
       filename,

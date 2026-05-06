@@ -20,6 +20,14 @@ export function PollEmailButton() {
         skippedDuplicates?: number;
         queryUsed?: string;
         onlyUnread?: boolean;
+        perMessage?: Array<{
+          subject?: string;
+          senderEmail?: string | null;
+          eligibleAttachments?: number;
+          attachmentFilenames?: string[];
+          documentsCreated?: number;
+          skippedDuplicates?: number;
+        }>;
       };
       if (!res.ok) {
         setMessage(`Chyba ${res.status}: ${data.error ?? res.statusText}`);
@@ -39,6 +47,19 @@ export function PollEmailButton() {
         if (ms > 0 && dc === 0 && sk > 0) {
           text +=
             "\n\nZprávy se našly, ale všechny přílohy byly přeskočeny jako duplicity (stejný soubor nebo stejná příloha už v databázi).";
+        }
+        if (data.perMessage?.length) {
+          text += "\n\nZprávy:";
+          for (const m of data.perMessage.slice(0, 8)) {
+            const who = m.senderEmail ?? "(odesílatel nerozpoznán)";
+            const subject = m.subject ? ` · ${m.subject}` : "";
+            const files = m.attachmentFilenames?.length
+              ? ` · ${m.attachmentFilenames.join(", ")}`
+              : "";
+            text += `\n- ${who}${subject}: ${m.documentsCreated ?? 0} nových, ${
+              m.skippedDuplicates ?? 0
+            } duplicit, ${m.eligibleAttachments ?? 0} použitelných příloh${files}`;
+          }
         }
         if (data.queryUsed) {
           text += `\n\nDotaz Gmail: ${data.queryUsed}`;
