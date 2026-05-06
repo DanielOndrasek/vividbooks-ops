@@ -361,32 +361,45 @@ export default async function DashboardPage() {
 
         <div className="mt-6 overflow-x-auto">
           <div className="min-w-[720px]">
-            <div className="flex h-48 items-end gap-2 border-b border-l px-3 pt-4">
+            <div className="flex h-52 items-end gap-2 border-b border-l px-3 pt-8">
               {monthlyRows.map((row) => (
                 <div
                   key={row.key}
-                  className="flex min-w-0 flex-1 items-end justify-center gap-1"
+                  className="flex h-full min-w-0 flex-1 items-end justify-center gap-1"
                 >
-                  <div
-                    className="bg-primary/80 w-3 rounded-t"
-                    style={{
-                      height:
-                        row.invoices === 0
-                          ? 0
-                          : `${Math.max(3, (row.invoices / monthlyMax) * 100)}%`,
-                    }}
-                    title={`${row.label}: faktury ${row.invoices}`}
-                  />
-                  <div
-                    className="w-3 rounded-t bg-amber-500/80"
-                    style={{
-                      height:
-                        row.paymentProofs === 0
-                          ? 0
-                          : `${Math.max(3, (row.paymentProofs / monthlyMax) * 100)}%`,
-                    }}
-                    title={`${row.label}: doklady o platbě ${row.paymentProofs}`}
-                  />
+                  <div className="flex h-full w-3 items-end">
+                    {row.invoices > 0 ? (
+                      <div
+                        className="bg-primary/80 relative w-full rounded-t"
+                        style={{
+                          height: `${Math.max(6, (row.invoices / monthlyMax) * 100)}%`,
+                        }}
+                        title={`${row.label}: faktury ${row.invoices}`}
+                      >
+                        <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
+                          {row.invoices}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex h-full w-3 items-end">
+                    {row.paymentProofs > 0 ? (
+                      <div
+                        className="relative w-full rounded-t bg-amber-500/80"
+                        style={{
+                          height: `${Math.max(
+                            6,
+                            (row.paymentProofs / monthlyMax) * 100,
+                          )}%`,
+                        }}
+                        title={`${row.label}: doklady o platbě ${row.paymentProofs}`}
+                      >
+                        <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
+                          {row.paymentProofs}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
