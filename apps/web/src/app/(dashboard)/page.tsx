@@ -21,6 +21,21 @@ type MonthlyDownloadsRow = {
   label: string;
   invoices: number;
   paymentProofs: number;
+  invoiceAmountWithoutVat: number;
+  invoiceAmountWithVat: number;
+  paymentProofAmount: number;
+};
+
+type MonthlyDocumentForReport = {
+  createdAt: Date;
+  documentType: DocumentType;
+  invoice: {
+    amountWithoutVat: { toString(): string } | null;
+    amountWithVat: { toString(): string } | null;
+  } | null;
+  paymentProof: {
+    amount: { toString(): string } | null;
+  } | null;
 };
 
 function startOfCurrentMonth(now: Date): Date {
@@ -38,9 +53,25 @@ function dateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function decimalToNumber(value: { toString(): string } | null | undefined): number {
+  if (value == null) {
+    return 0;
+  }
+  const n = Number(value.toString());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("cs-CZ", {
+    style: "currency",
+    currency: "CZK",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function buildCurrentMonthRows(
   now: Date,
-  docs: Array<{ createdAt: Date; documentType: DocumentType }>,
+  docs: MonthlyDocumentForReport[],
 ): MonthlyDownloadsRow[] {
   const start = startOfCurrentMonth(now);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -53,6 +84,9 @@ function buildCurrentMonthRows(
       label: d.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit" }),
       invoices: 0,
       paymentProofs: 0,
+      invoiceAmountWithoutVat: 0,
+      invoiceAmountWithVat: 0,
+      paymentProofAmount: 0,
     });
   }
 
@@ -64,8 +98,11 @@ function buildCurrentMonthRows(
     }
     if (doc.documentType === DocumentType.INVOICE) {
       row.invoices += 1;
+      row.invoiceAmountWithoutVat += decimalToNumber(doc.invoice?.amountWithoutVat);
+      row.invoiceAmountWithVat += decimalToNumber(doc.invoice?.amountWithVat);
     } else if (doc.documentType === DocumentType.PAYMENT_RECEIPT) {
       row.paymentProofs += 1;
+      row.paymentProofAmount += decimalToNumber(doc.paymentProof?.amount);
     }
   }
 
@@ -77,8 +114,18 @@ function sumMonthlyDownloads(rows: MonthlyDownloadsRow[]) {
     (acc, row) => ({
       invoices: acc.invoices + row.invoices,
       paymentProofs: acc.paymentProofs + row.paymentProofs,
+      invoiceAmountWithoutVat:
+        acc.invoiceAmountWithoutVat + row.invoiceAmountWithoutVat,
+      invoiceAmountWithVat: acc.invoiceAmountWithVat + row.invoiceAmountWithVat,
+      paymentProofAmount: acc.paymentProofAmount + row.paymentProofAmount,
     }),
-    { invoices: 0, paymentProofs: 0 },
+    {
+      invoices: 0,
+      paymentProofs: 0,
+      invoiceAmountWithoutVat: 0,
+      invoiceAmountWithVat: 0,
+      paymentProofAmount: 0,
+    },
   );
 }
 
@@ -124,7 +171,7 @@ export default async function DashboardPage() {
   const monthStart = startOfCurrentMonth(now);
   const nextMonthStart = startOfNextMonth(now);
 
-  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs, monthDocs] =
+  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs] =
     await Promise.all([
       prisma.invoice.count({
         where: {
@@ -151,19 +198,38 @@ export default async function DashboardPage() {
           metadata: true,
         },
       }),
-      prisma.document.findMany({
-        where: {
-          createdAt: { gte: monthStart, lt: nextMonthStart },
-          documentType: {
-            in: [DocumentType.INVOICE, DocumentType.PAYMENT_RECEIPT],
+    ]);
+
+  let monthDocs: MonthlyDocumentForReport[] = [];
+  let monthlyReportError: string | null = null;
+  try {
+    monthDocs = await prisma.document.findMany({
+      where: {
+        createdAt: { gte: monthStart, lt: nextMonthStart },
+        documentType: {
+          in: [DocumentType.INVOICE, DocumentType.PAYMENT_RECEIPT],
+        },
+      },
+      select: {
+        createdAt: true,
+        documentType: true,
+        invoice: {
+          select: {
+            amountWithoutVat: true,
+            amountWithVat: true,
           },
         },
-        select: {
-          createdAt: true,
-          documentType: true,
+        paymentProof: {
+          select: {
+            amount: true,
+          },
         },
-      }),
-    ]);
+      },
+    });
+  } catch (e) {
+    console.error("[dashboard] monthly report failed", e);
+    monthlyReportError = e instanceof Error ? e.message : String(e);
+  }
   const monthlyRows = buildCurrentMonthRows(now, monthDocs);
   const monthlyTotals = sumMonthlyDownloads(monthlyRows);
   const monthlyMax = Math.max(
@@ -258,6 +324,12 @@ export default async function DashboardPage() {
             </p>
           </div>
         </div>
+        {monthlyReportError ? (
+          <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            Report se teď nepodařilo načíst. Ostatní části nástěnky jsou dostupné;
+            přesnou příčinu ukládáme do server logu.
+          </p>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border bg-muted/20 p-4">
@@ -280,34 +352,68 @@ export default async function DashboardPage() {
           </div>
         </div>
 
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="text-muted-foreground text-sm">Faktury bez DPH</div>
+            <div className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
+              {formatCurrency(monthlyTotals.invoiceAmountWithoutVat)}
+            </div>
+          </div>
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="text-muted-foreground text-sm">Faktury s DPH</div>
+            <div className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
+              {formatCurrency(monthlyTotals.invoiceAmountWithVat)}
+            </div>
+          </div>
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="text-muted-foreground text-sm">Doklady o platbě (celkem)</div>
+            <div className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
+              {formatCurrency(monthlyTotals.paymentProofAmount)}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-6 overflow-x-auto">
           <div className="min-w-[720px]">
-            <div className="flex h-48 items-end gap-2 border-b border-l px-3 pt-4">
+            <div className="flex h-52 items-end gap-2 border-b border-l px-3 pt-8">
               {monthlyRows.map((row) => (
                 <div
                   key={row.key}
-                  className="flex min-w-0 flex-1 items-end justify-center gap-1"
+                  className="flex h-full min-w-0 flex-1 items-end justify-center gap-1"
                 >
-                  <div
-                    className="bg-primary/80 w-3 rounded-t"
-                    style={{
-                      height:
-                        row.invoices === 0
-                          ? 0
-                          : `${Math.max(3, (row.invoices / monthlyMax) * 100)}%`,
-                    }}
-                    title={`${row.label}: faktury ${row.invoices}`}
-                  />
-                  <div
-                    className="w-3 rounded-t bg-amber-500/80"
-                    style={{
-                      height:
-                        row.paymentProofs === 0
-                          ? 0
-                          : `${Math.max(3, (row.paymentProofs / monthlyMax) * 100)}%`,
-                    }}
-                    title={`${row.label}: doklady o platbě ${row.paymentProofs}`}
-                  />
+                  <div className="flex h-full w-3 items-end">
+                    {row.invoices > 0 ? (
+                      <div
+                        className="bg-primary/80 relative w-full rounded-t"
+                        style={{
+                          height: `${Math.max(6, (row.invoices / monthlyMax) * 100)}%`,
+                        }}
+                        title={`${row.label}: faktury ${row.invoices}`}
+                      >
+                        <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
+                          {row.invoices}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex h-full w-3 items-end">
+                    {row.paymentProofs > 0 ? (
+                      <div
+                        className="relative w-full rounded-t bg-amber-500/80"
+                        style={{
+                          height: `${Math.max(
+                            6,
+                            (row.paymentProofs / monthlyMax) * 100,
+                          )}%`,
+                        }}
+                        title={`${row.label}: doklady o platbě ${row.paymentProofs}`}
+                      >
+                        <span className="text-foreground absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-[10px] font-medium tabular-nums">
+                          {row.paymentProofs}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -333,19 +439,24 @@ export default async function DashboardPage() {
           <span>
             Zdroj: dokumenty stažené v tomto měsíci (<code>Document.createdAt</code>) s typem{" "}
             <code>INVOICE</code> / <code>PAYMENT_RECEIPT</code>.
+            U dokladů o platbě je v databázi evidovaná jedna celková částka, ne samostatný základ
+            bez DPH.
           </span>
         </div>
 
         <details className="mt-5 text-sm">
           <summary className="cursor-pointer font-medium">Denní tabulka</summary>
           <div className="mt-3 max-h-72 overflow-auto rounded-lg border">
-            <table className="w-full text-left text-xs">
+            <table className="min-w-[980px] w-full text-left text-xs">
               <thead className="bg-muted/50 sticky top-0">
                 <tr>
                   <th className="p-2 font-medium">Den</th>
                   <th className="p-2 text-right font-medium">Faktury</th>
                   <th className="p-2 text-right font-medium">Doklady o platbě</th>
                   <th className="p-2 text-right font-medium">Celkem</th>
+                  <th className="p-2 text-right font-medium">Faktury bez DPH</th>
+                  <th className="p-2 text-right font-medium">Faktury s DPH</th>
+                  <th className="p-2 text-right font-medium">Doklady celkem</th>
                 </tr>
               </thead>
               <tbody>
@@ -356,6 +467,15 @@ export default async function DashboardPage() {
                     <td className="p-2 text-right tabular-nums">{row.paymentProofs}</td>
                     <td className="p-2 text-right tabular-nums">
                       {row.invoices + row.paymentProofs}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {formatCurrency(row.invoiceAmountWithoutVat)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {formatCurrency(row.invoiceAmountWithVat)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {formatCurrency(row.paymentProofAmount)}
                     </td>
                   </tr>
                 ))}
