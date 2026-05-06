@@ -1,5 +1,5 @@
 /**
- * Gmail: stažení příloh, označení jako zpracované.
+ * Gmail: stažení příloh, označení jako zpracované a přečtené (odebrání UNREAD).
  * Vyžaduje OAuth2 refresh token s rozsahy gmail.readonly + gmail.modify.
  */
 
@@ -239,6 +239,8 @@ export async function markAsProcessed(
     id: messageId,
     requestBody: {
       addLabelIds: [labelId],
+      /** Po stažení příloh má zpráva v Gmailu zmizet z nepřečtených. */
+      removeLabelIds: ["UNREAD"],
     },
   });
 }
