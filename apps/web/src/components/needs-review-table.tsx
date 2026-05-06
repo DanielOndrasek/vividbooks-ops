@@ -352,7 +352,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
                       <>
                         {" · "}
                         <Link
-                          href={`/invoices/${d.invoiceId}`}
+                          href={`/invoices/${d.invoiceId}?from=needs-review`}
                           className="text-primary underline"
                         >
                           Detail faktury

@@ -46,6 +46,7 @@ type Props = {
 export default async function InvoiceDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
   const sp = await searchParams;
+  const fromNeedsReview = sp.from === "needs-review";
   const session = await auth();
   const role = session?.user?.role;
   const canAct =
@@ -77,16 +78,20 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
   });
 
   const backQs = new URLSearchParams();
-  if (sp.q) {
-    backQs.set("q", sp.q);
+  if (!fromNeedsReview) {
+    if (sp.q) {
+      backQs.set("q", sp.q);
+    }
+    if (sp.status) {
+      backQs.set("status", sp.status);
+    }
+    if (sp.sort) {
+      backQs.set("sort", sp.sort);
+    }
   }
-  if (sp.status) {
-    backQs.set("status", sp.status);
-  }
-  if (sp.sort) {
-    backQs.set("sort", sp.sort);
-  }
-  const backHref = `/invoices${backQs.toString() ? `?${backQs}` : ""}`;
+  const backHref = fromNeedsReview
+    ? "/needs-review"
+    : `/invoices${backQs.toString() ? `?${backQs}` : ""}`;
 
   const previewSrc = `/api/documents/${invoice.documentId}/file`;
 
@@ -145,7 +150,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
           href={backHref}
           className="text-muted-foreground hover:text-foreground text-sm underline"
         >
-          ← Zpět na přehled
+          {fromNeedsReview ? "← Zpět ke kontrole" : "← Zpět na přehled"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">
           Faktura — {invoice.document.originalFilename}
@@ -273,6 +278,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: Props)
                 showApproveReject={showActions}
                 canConvertToPayment={canConvertToPayment}
                 afterDeleteHref={backHref}
+                afterActionHref={fromNeedsReview ? "/needs-review" : undefined}
               />
             </section>
           )}
