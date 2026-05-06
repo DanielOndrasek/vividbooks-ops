@@ -10,7 +10,7 @@ import {
 } from "@/components/invoice-metadata-form";
 import { PohodaExportRetryButton } from "@/components/pohoda-export-retry-button";
 import { prisma } from "@/lib/prisma";
-import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
+import { isInvoiceConvertibleToPaymentProof } from "@/lib/invoice-convert-eligibility";
 
 export const dynamic = "force-dynamic";
 

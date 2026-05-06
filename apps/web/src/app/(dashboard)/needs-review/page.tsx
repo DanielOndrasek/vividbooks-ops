@@ -6,7 +6,7 @@ import {
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { prisma } from "@/lib/prisma";
 import { getDocumentReviewCapabilities } from "@/services/document-review-resolve";
-import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
+import { isInvoiceConvertibleToPaymentProof } from "@/lib/invoice-convert-eligibility";
 
 export const dynamic = "force-dynamic";
 
