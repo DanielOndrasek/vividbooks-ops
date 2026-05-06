@@ -9,6 +9,41 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+/** Krátký text do nástěnky z metadata jobu email_fetch (adresy odesílatelů + počty). */
+function emailFetchJobSummary(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const m = metadata as Record<string, unknown>;
+  const pm = m.perMessage ?? m.partialPerMessage;
+  if (!Array.isArray(pm) || pm.length === 0) {
+    return null;
+  }
+  const parts: string[] = [];
+  for (const row of pm.slice(0, 6)) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    const r = row as Record<string, unknown>;
+    const addr = typeof r.senderEmail === "string" ? r.senderEmail : null;
+    const sub =
+      typeof r.subject === "string" && r.subject.length > 0
+        ? r.subject.length > 44
+          ? `${r.subject.slice(0, 44)}…`
+          : r.subject
+        : null;
+    const head = addr ?? sub ?? String(r.gmailMessageId ?? "").slice(0, 12);
+    const d = typeof r.documentsCreated === "number" ? r.documentsCreated : 0;
+    const s = typeof r.skippedDuplicates === "number" ? r.skippedDuplicates : 0;
+    const e = typeof r.eligibleAttachments === "number" ? r.eligibleAttachments : 0;
+    parts.push(`${head} — ${d} nových dokl., ${s} přeskočeno, ${e} příloh v mailu`);
+  }
+  if (pm.length > 6) {
+    parts.push(`… +${pm.length - 6} dalších zpráv`);
+  }
+  return parts.join(" · ");
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   const canRunJobs = canRunIntegrationJobs(session?.user?.role);
@@ -32,7 +67,7 @@ export default async function DashboardPage() {
       prisma.processingJob.findMany({
         orderBy: { createdAt: "desc" },
         take: 5,
-        select: { id: true, type: true, status: true, createdAt: true },
+        select: { id: true, type: true, status: true, createdAt: true, metadata: true },
       }),
     ]);
 
@@ -144,18 +179,27 @@ export default async function DashboardPage() {
           {lastJobs.length === 0 ? (
             <li className="text-muted-foreground text-sm">Zatím žádné záznamy.</li>
           ) : (
-            lastJobs.map((j) => (
-              <li
-                key={j.id}
-                className="text-muted-foreground flex flex-wrap items-baseline justify-between gap-2 rounded-lg px-2 py-2 text-sm odd:bg-muted/25"
-              >
-                <span className="font-mono text-xs text-foreground">{j.type}</span>
-                <span className="text-xs">{j.status}</span>
-                <span className="text-xs tabular-nums">
-                  {j.createdAt.toLocaleString("cs-CZ")}
-                </span>
-              </li>
-            ))
+            lastJobs.map((j) => {
+              const fetchHint =
+                j.type === "email_fetch" ? emailFetchJobSummary(j.metadata) : null;
+              return (
+                <li
+                  key={j.id}
+                  className="text-muted-foreground space-y-1 rounded-lg px-2 py-2 text-sm odd:bg-muted/25"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-mono text-xs text-foreground">{j.type}</span>
+                    <span className="text-xs">{j.status}</span>
+                    <span className="text-xs tabular-nums">
+                      {j.createdAt.toLocaleString("cs-CZ")}
+                    </span>
+                  </div>
+                  {fetchHint ? (
+                    <p className="text-muted-foreground pl-0.5 text-xs leading-snug">{fetchHint}</p>
+                  ) : null}
+                </li>
+              );
+            })
           )}
         </ul>
       </section>

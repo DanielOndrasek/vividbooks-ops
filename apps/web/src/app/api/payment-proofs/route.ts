@@ -30,6 +30,7 @@ export async function GET() {
       documentStatus: p.document.status,
       emailSubject: p.document.email.subject,
       emailSender: p.document.email.sender,
+      emailSenderAddress: p.document.email.senderEmail,
       receivedAt: p.document.email.receivedAt.toISOString(),
       processedAt: p.document.email.processedAt?.toISOString() ?? null,
     })),

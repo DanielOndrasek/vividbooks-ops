@@ -104,6 +104,7 @@ export async function GET(
     email: {
       subject: invoice.document.email.subject,
       sender: invoice.document.email.sender,
+      senderEmail: invoice.document.email.senderEmail,
       receivedAt: invoice.document.email.receivedAt.toISOString(),
     },
   });
