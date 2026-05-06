@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import type { gmail_v1 } from "googleapis";
 
 import { writeAuditLog } from "@/lib/audit";
+import { gmailOnlyUnread } from "@/lib/gmail-config";
 import { prisma } from "@/lib/prisma";
 import {
   buildUnprocessedQuery,
@@ -25,6 +26,10 @@ export type EmailPollResult = {
   messagesScanned: number;
   documentsCreated: number;
   skippedDuplicates: number;
+  /** Gmail search query (diagnostics). */
+  queryUsed: string;
+  /** When true, only unread messages match — read mail won’t reappear after removing „Zpracováno“ only. */
+  onlyUnread: boolean;
 };
 
 function sha256(buf: Buffer): string {
@@ -196,6 +201,8 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       messagesScanned: messageIds.length,
       documentsCreated,
       skippedDuplicates,
+      queryUsed: buildUnprocessedQuery(),
+      onlyUnread: gmailOnlyUnread(),
     };
   } catch (err) {
     await prisma.processingJob.update({
