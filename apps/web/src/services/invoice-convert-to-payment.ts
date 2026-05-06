@@ -1,26 +1,11 @@
 import { DocumentStatus, DocumentType } from "@prisma/client";
 
 import { writeAuditLog } from "@/lib/audit";
+import { isInvoiceConvertibleToPaymentProof } from "@/lib/invoice-convert-eligibility";
 import { prisma } from "@/lib/prisma";
 import { uploadPaymentReceiptIfConfigured } from "@/services/drive";
 
-/** Doklady ve stavu „ještě ne hotová schválená faktura na Drive“. */
-const CONVERTIBLE_STATUSES = new Set<DocumentStatus>([
-  DocumentStatus.PENDING_APPROVAL,
-  DocumentStatus.NEEDS_REVIEW,
-  DocumentStatus.REJECTED,
-  DocumentStatus.UPLOAD_FAILED,
-]);
-
-export function isInvoiceConvertibleToPaymentProof(
-  documentType: DocumentType,
-  documentStatus: DocumentStatus,
-): boolean {
-  return (
-    documentType === DocumentType.INVOICE &&
-    CONVERTIBLE_STATUSES.has(documentStatus)
-  );
-}
+export { isInvoiceConvertibleToPaymentProof };
 
 function noteFromInvoice(inv: {
   supplierName: string | null;

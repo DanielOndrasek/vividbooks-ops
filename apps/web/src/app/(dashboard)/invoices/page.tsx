@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { type DocumentStatus, type Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { isInvoiceConvertibleToPaymentProof } from "@/services/invoice-convert-to-payment";
+import { isInvoiceConvertibleToPaymentProof } from "@/lib/invoice-convert-eligibility";
 
 export const dynamic = "force-dynamic";
 
