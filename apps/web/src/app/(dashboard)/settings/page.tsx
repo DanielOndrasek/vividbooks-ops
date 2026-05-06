@@ -184,14 +184,13 @@ export default async function SettingsPage() {
           </li>
           <li>
             Pošta se bere z účtu, ke kterému patří <code>GMAIL_REFRESH_TOKEN</code> (API{" "}
-            <code>users/me</code>). <code>GMAIL_ONLY_UNREAD</code>: jen nepřečtené (výchozí zapnuto,
-            vypnout <code>0</code>).
+            <code>users/me</code>). <code>GMAIL_ONLY_UNREAD=1</code> volitelně omezí dotaz na nepřečtené (
+            <code>is:unread</code>); jinak se přečtenost nebere v úvahu.
           </li>
           <li>
             Po stažení dostane zpráva štítek „zpracováno“ a v Gmailu se označí jako{" "}
-            <strong>přečtená</strong>. Když štítek zpracováno odebereš a chceš úlohu spustit znovu,
-            musíš zprávu v Gmailu znovu označit jako <strong>nepřečtenou</strong> — jinak ji dotaz s{" "}
-            <code>is:unread</code> nenajde.
+            <strong>přečtená</strong>. Bez <code>GMAIL_ONLY_UNREAD=1</code> ji při dalším běhu systém
+            zase najde, pokud štítek zpracováno v Gmailu odebereš.
           </li>
           <li>
             <code>GMAIL_DELIVERED_TO</code> — jen u pošty přeposlané/aliasu do jiné schránky. U{" "}

@@ -46,7 +46,7 @@ function labelQueryToken(name: string): string {
   return /\s/.test(t) ? `"${t.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : t;
 }
 
-/** Gmail vyhledávací dotaz: přílohy, volitelně konkrétní příjemce, label, bez „zpracováno“, nepřečtené. */
+/** Gmail vyhledávací dotaz: přílohy, volitelně jen nepřečtené, příjemce, label, bez „zpracováno“. */
 export function buildUnprocessedQuery(): string {
   const filter = labelQueryToken(gmailFilterLabel());
   const processed = labelQueryToken(gmailProcessedLabel());

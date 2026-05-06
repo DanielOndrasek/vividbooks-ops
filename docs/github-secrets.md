@@ -40,7 +40,7 @@ Přidej jako repository secrets (hodnoty neukládej do gitu):
 | `GMAIL_FILTER_LABEL` | Volitelné |
 | `GMAIL_PROCESSED_LABEL` | Volitelné |
 | `GMAIL_POLL_MAX_RESULTS` | Volitelné |
-| `GMAIL_ONLY_UNREAD` | `1` = jen nepřečtené (výchozí při absenci na Vercelu v kódu), `0` = i přečtené |
+| `GMAIL_ONLY_UNREAD` | Volitelné: `1` / `true` = jen nepřečtené (`is:unread`). Bez proměnné se přečtenost nefiltruje (výchozí). |
 | `GMAIL_DELIVERED_TO` | Např. `hr@vividbooks.com` — jen zprávy doručené na tuto adresu (`deliveredto:`) |
 | `GMAIL_ADDRESS_MATCH_MODE` | Volitelné: `deliveredto` (výchozí) nebo `to` |
 | `CRON_SECRET` | Tajný řetězec pro Vercel Cron (`Authorization: Bearer …`) |
