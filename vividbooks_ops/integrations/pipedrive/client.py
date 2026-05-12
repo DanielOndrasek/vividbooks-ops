@@ -100,6 +100,10 @@ class PipedriveClient:
         data = self._get("/dealFields")
         return data.get("data") or []
 
+    def get_lead_fields(self) -> List[Dict[str, Any]]:
+        """Všechna pole leadů (včetně vlastních); endpoint může stránkovat."""
+        return list(self.iter_paginated("/leadFields"))
+
     def get_pipelines(self) -> List[Dict[str, Any]]:
         data = self._get("/pipelines")
         return data.get("data") or []

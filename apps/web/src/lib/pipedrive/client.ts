@@ -119,6 +119,15 @@ export class PipedriveClient {
     return body.data ?? [];
   }
 
+  /** Všechna pole leadů včetně vlastních; API může stránkovat. */
+  async getLeadFields(): Promise<DealDict[]> {
+    const out: DealDict[] = [];
+    for await (const f of this.iterPaginated("/leadFields")) {
+      out.push(f);
+    }
+    return out;
+  }
+
   async getAllProducts(): Promise<DealDict[]> {
     const out: DealDict[] = [];
     for await (const p of this.iterPaginated("/products")) {
