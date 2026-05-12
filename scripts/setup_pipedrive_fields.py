@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Výpis deal fieldů a pipeline pro nastavení PIPEDRIVE_CATEGORY_FIELD_KEY."""
+"""Výpis deal a lead fieldů + pipeline pro nastavení integrace."""
 
 from __future__ import annotations
 
@@ -92,6 +92,26 @@ def main() -> None:
 
     for p in sorted(pipes, key=lambda x: (x.get("name") or "", x.get("id") or 0)):
         print(f"  id={p.get('id')}\tname={p.get('name')!r}")
+
+    print("\n=== Pole leadů (key, name, field_type, volby) ===\n")
+    try:
+        lead_fields = client.get_lead_fields()
+    except Exception as e:
+        print(f"  (leadFields nedostupné nebo chyba API: {e})\n", file=sys.stderr)
+    else:
+        if not lead_fields:
+            print("  (žádná pole — účet může mít funkci Leads vypnutou)\n")
+        else:
+            for f in sorted(lead_fields, key=lambda x: (x.get("name") or "", x.get("key") or "")):
+                key = f.get("key")
+                name = f.get("name")
+                ftype = f.get("field_type")
+                print(f"  {key}\t{name}\t{ftype}")
+                opts = f.get("options") or []
+                if opts:
+                    for o in opts:
+                        print(f"      option id={o.get('id')!r} label={o.get('label')!r}")
+                print()
 
     print(
         "\nDo souboru .env zapiš klíč pole kategorie do proměnné "

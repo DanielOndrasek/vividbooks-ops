@@ -151,7 +151,8 @@ export default async function SettingsPage() {
           <PipedriveSchemaExplorer />
         ) : (
           <p className="text-muted-foreground text-sm">
-            Schéma Pipedrive (pipeline, pole, uživatelé) může načíst jen administrátor a jen při kompletní konfiguraci.
+            Schéma Pipedrive (pipeline, pole obchodů/leadů, uživatelé) může načíst jen administrátor a jen při
+            kompletní konfiguraci.
           </p>
         )}
       </section>

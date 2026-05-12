@@ -46,6 +46,7 @@ type ProductRow = {
 
 type SchemaPayload = {
   dealFields: FieldRow[];
+  leadFields: FieldRow[];
   personFields: FieldRow[];
   organizationFields: FieldRow[];
   productFields: FieldRow[];
@@ -57,6 +58,7 @@ type SchemaPayload = {
 const TABS = [
   { id: "pipelines", label: "Pipeline + fáze" },
   { id: "deals", label: "Pole obchodů" },
+  { id: "leads", label: "Pole leadů" },
   { id: "people", label: "Pole osob" },
   { id: "orgs", label: "Pole organizací" },
   { id: "productFields", label: "Pole produktů" },
@@ -156,6 +158,7 @@ export function PipedriveSchemaExplorer() {
       }
       setData({
         dealFields: j.dealFields,
+        leadFields: j.leadFields ?? [],
         personFields: j.personFields ?? [],
         organizationFields: j.organizationFields ?? [],
         productFields: j.productFields,
@@ -216,15 +219,16 @@ export function PipedriveSchemaExplorer() {
       <Button type="button" variant="outline" disabled={loading} onClick={() => void load()}>
         {loading
           ? "Načítám…"
-          : "Načíst schéma Pipedrive (pipeline, fáze, pole, produkty, uživatelé)"}
+          : "Načíst schéma Pipedrive (pipeline, fáze, pole obchodů/leadů, produkty, uživatelé)"}
       </Button>
       {error && <p className="text-destructive text-sm">{error}</p>}
       {open && data && (
         <div className="space-y-3">
           <p className="text-muted-foreground text-xs">
             Do env <code className="bg-muted rounded px-1">PIPEDRIVE_CATEGORY_FIELD_KEY</code> patří{" "}
-            <strong>key</strong> pole (hash) u obchodu i u produktu, ne číselné <strong>id</strong> řádku
-            pole — to slouží k úpravě definice v Pipedrive.
+            <strong>key</strong> vlastního pole u obchodu nebo produktu (viz záložky obchody / produkt), ne číselné{" "}
+            <strong>id</strong> řádku v tabulce polí — to slouží k úpravě definice v Pipedrive. U leadů je{" "}
+            <strong>key</strong> uvedený v záložce „Pole leadů“.
           </p>
           <div className="flex flex-wrap gap-1 border-b pb-2">
             {TABS.map((t) => (
@@ -305,6 +309,7 @@ export function PipedriveSchemaExplorer() {
             </div>
           )}
           {tab === "deals" && <FieldTable rows={data.dealFields} filter={filter} />}
+          {tab === "leads" && <FieldTable rows={data.leadFields} filter={filter} />}
           {tab === "people" && <FieldTable rows={data.personFields} filter={filter} />}
           {tab === "orgs" && <FieldTable rows={data.organizationFields} filter={filter} />}
           {tab === "productFields" && <FieldTable rows={data.productFields} filter={filter} />}

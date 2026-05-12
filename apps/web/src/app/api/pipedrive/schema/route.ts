@@ -59,6 +59,7 @@ export async function GET() {
     const client = new PipedriveClient(pd.domain, pd.apiToken);
 
     const dealFieldsRaw = await client.getDealFields();
+    const leadFieldsRaw = await client.getLeadFields();
     const personFieldsRaw = await client.getPersonFields();
     const organizationFieldsRaw = await client.getOrganizationFields();
     const productFieldsRaw = await client.getProductFields();
@@ -68,6 +69,7 @@ export async function GET() {
     const usersRaw = await client.getUsers();
 
     const dealFields = dealFieldsRaw.map(mapEntityField).sort(sortFields);
+    const leadFields = leadFieldsRaw.map(mapEntityField).sort(sortFields);
     const personFields = personFieldsRaw.map(mapEntityField).sort(sortFields);
     const organizationFields = organizationFieldsRaw.map(mapEntityField).sort(sortFields);
     const productFields = productFieldsRaw.map(mapEntityField).sort(sortFields);
@@ -136,6 +138,7 @@ export async function GET() {
 
     return NextResponse.json({
       dealFields,
+      leadFields,
       personFields,
       organizationFields,
       productFields,
