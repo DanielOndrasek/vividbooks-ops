@@ -296,7 +296,7 @@ export default async function DashboardPage() {
       <section aria-label="Souhrn">
         <div className="grid gap-4 sm:grid-cols-3">
           <Link
-            href="/invoices?status=PENDING_APPROVAL"
+            href="/invoices"
             className="group border-border/80 from-card to-muted/20 hover:border-primary/25 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition-all hover:shadow-md"
           >
             <div className="text-primary mb-3 flex size-10 items-center justify-center rounded-xl bg-primary/10">
