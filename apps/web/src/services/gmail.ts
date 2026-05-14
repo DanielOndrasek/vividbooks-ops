@@ -104,6 +104,44 @@ export async function listLabelIdByName(
   return hit?.id ?? null;
 }
 
+export type GmailLabelSummary = {
+  id: string;
+  name: string;
+  type: string;
+  labelListVisibility: string | null;
+  messageListVisibility: string | null;
+};
+
+/** Seznam všech štítků v Gmailu (system + user). Pro diagnostiku v UI. */
+export async function listAllLabels(
+  gmail: gmail_v1.Gmail,
+): Promise<GmailLabelSummary[]> {
+  const res = await gmail.users.labels.list({ userId: "me" });
+  const labels = res.data.labels ?? [];
+  return labels
+    .filter((l): l is { id: string; name: string } & typeof l =>
+      Boolean(l.id && l.name),
+    )
+    .map((l) => ({
+      id: l.id ?? "",
+      name: l.name ?? "",
+      type: l.type ?? "user",
+      labelListVisibility: l.labelListVisibility ?? null,
+      messageListVisibility: l.messageListVisibility ?? null,
+    }));
+}
+
+/** Mapuje label IDy → human-friendly jména pro perMessage diagnostiku. */
+export function buildLabelIdToNameMap(
+  labels: GmailLabelSummary[],
+): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const l of labels) {
+    m.set(l.id, l.name);
+  }
+  return m;
+}
+
 export async function ensureLabelExists(
   gmail: gmail_v1.Gmail,
   labelName: string,
