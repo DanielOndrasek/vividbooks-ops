@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { GmailDiagnoseForm } from "@/components/gmail-diagnose-form";
+import { MarkEmailsProcessedButton } from "@/components/mark-emails-processed-button";
 import { PipedriveSchemaExplorer } from "@/components/pipedrive-schema-explorer";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
@@ -220,6 +221,15 @@ export default async function SettingsPage() {
         {canRunJobs ? (
           <div className="space-y-3">
             <PollEmailButton />
+            <div className="border-t pt-3">
+              <p className="text-muted-foreground mb-2 text-xs">
+                Jednorázové vyčištění schránky: označí všechny e-maily vyhovující dotazu
+                výše jako <code>Zpracováno</code> (přidá štítek a odebere UNREAD) — do
+                aplikace se pak budou stahovat jen <strong>nově příchozí</strong>. Přílohy
+                se nestahují a v aplikaci nevznikají nové doklady.
+              </p>
+              <MarkEmailsProcessedButton />
+            </div>
             <GmailDiagnoseForm />
           </div>
         ) : (
