@@ -7,19 +7,31 @@ import { createHash } from "node:crypto";
 import type { gmail_v1 } from "googleapis";
 
 import { writeAuditLog } from "@/lib/audit";
-import { gmailOnlyUnread } from "@/lib/gmail-config";
+import { gmailOnlyUnread, gmailProcessedLabel } from "@/lib/gmail-config";
 import { prisma } from "@/lib/prisma";
 import {
+  buildLabelIdToNameMap,
   buildUnprocessedQuery,
   downloadAttachment,
   fetchUnprocessedMessageIds,
   getGmailClient,
+  listAllLabels,
   listEligibleAttachments,
   markAsProcessed,
   parseMessageMeta,
   saveAttachmentToDisk,
   tmpDirForMessage,
 } from "@/services/gmail";
+
+/** Diagnostika štítků zprávy stažené z Gmailu. */
+export type EmailPollMessageLabels = {
+  /** Pole label ID, které Gmail u zprávy vrátil. */
+  ids: string[];
+  /** Pole label jmen po překladu z ID (kde to šlo). */
+  names: string[];
+  /** True, pokud zpráva má štítek odpovídající `GMAIL_PROCESSED_LABEL`. */
+  hasProcessedLabel: boolean;
+};
 
 export type EmailPollResult = {
   jobId: string;
@@ -35,11 +47,18 @@ export type EmailPollResult = {
     attachmentFilenames: string[];
     documentsCreated: number;
     skippedDuplicates: number;
+    /**
+     * Stav štítků zprávy v okamžiku stažení — užitečné pro diagnostiku
+     * „proč zpráva prošla filtrem -label:Zpracováno".
+     */
+    labels: EmailPollMessageLabels;
   }>;
   /** Gmail search query (diagnostics). */
   queryUsed: string;
   /** When true, only unread messages match — read mail won’t reappear after removing „Zpracováno“ only. */
   onlyUnread: boolean;
+  /** Konfigurovaný processed label name (default Zpracováno). */
+  processedLabelName: string;
 };
 
 function sha256(buf: Buffer): string {
@@ -65,26 +84,31 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
   const gmail = getGmailClient();
   const messageIds = await fetchUnprocessedMessageIds(gmail);
 
+  // Načteme všechny labels (jeden API call) a vyrobíme mapu ID → name,
+  // ať můžeme u každé zprávy vypsat čitelné názvy štítků do diagnostiky.
+  const allLabels = await listAllLabels(gmail);
+  const labelIdToName = buildLabelIdToNameMap(allLabels);
+  const processedLabelName = gmailProcessedLabel();
+  const processedLabelLower = processedLabelName.toLowerCase();
+  const processedLabelId =
+    allLabels.find((l) => l.name.toLowerCase() === processedLabelLower)?.id ?? null;
+
   const job = await prisma.processingJob.create({
     data: {
       type: "email_fetch",
       status: "processing",
-      metadata: { messageIds, query: buildUnprocessedQuery() },
+      metadata: {
+        messageIds,
+        query: buildUnprocessedQuery(),
+        processedLabelName,
+        processedLabelId,
+      },
     },
   });
 
   let documentsCreated = 0;
   let skippedDuplicates = 0;
-  const perMessage: Array<{
-    gmailMessageId: string;
-    subject: string;
-    senderEmail: string | null;
-    senderHeader: string;
-    eligibleAttachments: number;
-    attachmentFilenames: string[];
-    documentsCreated: number;
-    skippedDuplicates: number;
-  }> = [];
+  const perMessage: EmailPollResult["perMessage"] = [];
 
   try {
     for (const messageId of messageIds) {
@@ -92,6 +116,16 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       const attachments = listEligibleAttachments(message);
       const meta = parseMessageMeta(message);
       const dir = tmpDirForMessage(messageId);
+      const rawLabelIds = message.labelIds ?? [];
+      const labelNames = rawLabelIds.map((id) => labelIdToName.get(id) ?? id);
+      const hasProcessedLabel =
+        (processedLabelId !== null && rawLabelIds.includes(processedLabelId)) ||
+        labelNames.some((n) => n.toLowerCase() === processedLabelLower);
+      const messageLabels: EmailPollMessageLabels = {
+        ids: rawLabelIds,
+        names: labelNames,
+        hasProcessedLabel,
+      };
 
       const subject = meta.emailSubject || "(bez předmětu)";
       const sender = meta.emailFrom || "(neznámý odesílatel)";
@@ -179,6 +213,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         attachmentFilenames: attachments.map((a) => `${a.filename} (${a.mimeType})`),
         documentsCreated: msgDocs,
         skippedDuplicates: msgSkipped,
+        labels: messageLabels,
       });
 
       await prisma.email.update({
@@ -203,6 +238,8 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
           messagesScanned: messageIds.length,
           documentsCreated,
           skippedDuplicates,
+          processedLabelName,
+          processedLabelId,
           perMessage,
         },
       },
@@ -216,6 +253,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       perMessage,
       queryUsed: buildUnprocessedQuery(),
       onlyUnread: gmailOnlyUnread(),
+      processedLabelName,
     };
   } catch (err) {
     await prisma.processingJob.update({
@@ -227,6 +265,8 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         metadata: {
           query: buildUnprocessedQuery(),
           messageIds,
+          processedLabelName,
+          processedLabelId,
           partialPerMessage: perMessage,
         },
       },

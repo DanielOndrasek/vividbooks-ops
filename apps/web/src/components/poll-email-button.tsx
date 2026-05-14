@@ -20,6 +20,7 @@ export function PollEmailButton() {
         skippedDuplicates?: number;
         queryUsed?: string;
         onlyUnread?: boolean;
+        processedLabelName?: string;
         perMessage?: Array<{
           subject?: string;
           senderEmail?: string | null;
@@ -27,6 +28,10 @@ export function PollEmailButton() {
           attachmentFilenames?: string[];
           documentsCreated?: number;
           skippedDuplicates?: number;
+          labels?: {
+            names?: string[];
+            hasProcessedLabel?: boolean;
+          };
         }>;
       };
       if (!res.ok) {
@@ -56,9 +61,23 @@ export function PollEmailButton() {
             const files = m.attachmentFilenames?.length
               ? ` · ${m.attachmentFilenames.join(", ")}`
               : "";
+            const labelHint = m.labels?.names?.length
+              ? ` · štítky: ${m.labels.names.join(", ")}`
+              : "";
             text += `\n- ${who}${subject}: ${m.documentsCreated ?? 0} nových, ${
               m.skippedDuplicates ?? 0
-            } duplicit, ${m.eligibleAttachments ?? 0} použitelných příloh${files}`;
+            } duplicit, ${m.eligibleAttachments ?? 0} použitelných příloh${files}${labelHint}`;
+          }
+          const haveProcessed = data.perMessage.filter(
+            (m) => m.labels?.hasProcessedLabel,
+          ).length;
+          if (haveProcessed > 0) {
+            text +=
+              `\n\nPozor: ${haveProcessed} stažených zpráv už mělo štítek "${
+                data.processedLabelName ?? "Zpracováno"
+              }". ` +
+              "Gmail je přesto vrátil — pravděpodobně se název štítku v konfiguraci a v Gmailu liší (diakritika, vnoření, jiné jméno). " +
+              'Otevři "Diagnostika štítků a posledního stahování" v Nastavení.';
           }
         }
         if (data.queryUsed) {
