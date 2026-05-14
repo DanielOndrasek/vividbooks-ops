@@ -22,6 +22,12 @@ const STATUSES: DocumentStatus[] = [
   "PARSED",
 ];
 
+/** Faktury, které ještě uživatel musí vyřídit (default na stránce). */
+const PENDING_STATUSES: DocumentStatus[] = ["PENDING_APPROVAL", "NEEDS_REVIEW"];
+
+/** Hodnota v URL pro explicitní „zobrazit všechny stavy". */
+const STATUS_ALL = "all";
+
 type Props = {
   searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
 };
@@ -34,14 +40,27 @@ export default async function InvoicesPage({ searchParams }: Props) {
 
   const q = sp.q?.trim();
   const sort = sp.sort === "dueDate" ? "dueDate" : "receivedAt";
-  const statusFilter = sp.status as DocumentStatus | undefined;
+  const statusParamRaw = sp.status;
+  const singleStatus =
+    statusParamRaw && STATUSES.includes(statusParamRaw as DocumentStatus)
+      ? (statusParamRaw as DocumentStatus)
+      : null;
+  const showAll = statusParamRaw === STATUS_ALL;
+  // Bez parametru zobrazujeme jen faktury čekající na akci — historické,
+  // už schválené (a další konečné stavy) by jinak zaplavily seznam.
+  const isDefaultPendingView = !singleStatus && !showAll;
+
+  let statusWhere: Prisma.DocumentWhereInput | undefined;
+  if (singleStatus) {
+    statusWhere = { status: singleStatus };
+  } else if (isDefaultPendingView) {
+    statusWhere = { status: { in: PENDING_STATUSES } };
+  }
 
   const where: Prisma.InvoiceWhereInput = {
     document: {
       documentType: "INVOICE",
-      ...(statusFilter && STATUSES.includes(statusFilter)
-        ? { status: statusFilter }
-        : {}),
+      ...(statusWhere ?? {}),
     },
   };
   if (q) {
@@ -115,12 +134,27 @@ export default async function InvoicesPage({ searchParams }: Props) {
     };
   });
 
-  const filtersActive = Boolean(q || (sp.status && sp.status.length > 0));
+  const filtersActive = Boolean(q || !isDefaultPendingView);
+
+  const heading = isDefaultPendingView
+    ? "Faktury ke schválení"
+    : showAll
+      ? "Všechny faktury"
+      : `Faktury — ${singleStatus}`;
+  const subheading = isDefaultPendingView
+    ? 'Zobrazují se jen faktury čekající na akci (PENDING_APPROVAL nebo NEEDS_REVIEW). Pro historické záznamy přepněte filtr na "Všechny stavy".'
+    : null;
+  const emptyMessage = isDefaultPendingView
+    ? "Žádné faktury aktuálně nečekají na schválení."
+    : "Žádné záznamy.";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Faktury ke schválení</h1>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
+        {subheading ? (
+          <p className="text-muted-foreground text-sm">{subheading}</p>
+        ) : null}
       </div>
 
       <CollapsibleFilters
@@ -144,10 +178,13 @@ export default async function InvoicesPage({ searchParams }: Props) {
             <label className="text-muted-foreground text-xs">Stav</label>
             <select
               name="status"
-              defaultValue={sp.status ?? ""}
+              defaultValue={
+                singleStatus ?? (showAll ? STATUS_ALL : "")
+              }
               className="border-input bg-background rounded-md border px-3 py-2"
             >
-              <option value="">Všechny</option>
+              <option value="">Ke schválení (výchozí)</option>
+              <option value={STATUS_ALL}>Všechny stavy</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -171,7 +208,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       </CollapsibleFilters>
 
       {rows.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Žádné záznamy.</p>
+        <p className="text-muted-foreground text-sm">{emptyMessage}</p>
       ) : (
         <InvoicesListTable rows={tableRows} canAct={canAct} />
       )}
