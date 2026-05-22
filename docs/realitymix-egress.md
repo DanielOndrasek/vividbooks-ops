@@ -95,6 +95,24 @@ flyctl deploy --remote-only
 3. Po potvrzení whitelistu starou IP uvolnit: `flyctl ips release <old-ip>`.
 4. Aktualizovat tento runbook (sekce „Aktuálně přidělené IP").
 
+## Cron / schedule
+
+Edge Function [supabase/functions/realitymix-sync](../supabase/functions/realitymix-sync)
+přijímá `{"kind": "stats" | "inquiries" | "all"}`. Doporučený plán
+v `pg_cron` (viz [README funkce](../supabase/functions/realitymix-sync/README.md)):
+
+- `10 0 * * *` – `{"kind":"stats"}` (denní statistiky).
+- `*/15 * * * *` – `{"kind":"inquiries","detail":true,"since": now() - '24h'}`.
+
+## Troubleshooting
+
+| Symptom | Pravděpodobná příčina | Akce |
+| ------- | --------------------- | ---- |
+| Edge Function vrací `egress 502` / `realitymix_error` se `status` 10–13 | Expirovaná RealityMIX session a relogin selhal | Ověřit `REALITYMIX_RK_PASSWORD` a `REALITYMIX_SW_KEY` (mohly být rotovány). |
+| Edge Function vrací `egress 401` | Špatný `INTERNAL_EGRESS_TOKEN` na jedné straně | Sjednotit token mezi Fly a Supabase secrets. |
+| `realitymix_error` se zprávou `IP` / `whitelist` | Změnila se IP, kterou má RealityMIX whitelistnutou | `flyctl ips list` → nahlásit aktuální IP DALTEN media. |
+| `egress` timeouty na 20 s | Worker chybí / je v cold-startu | `flyctl status`, `flyctl logs`; v `fly.toml` máme `min_machines_running=1`. |
+
 ## Aktuálně přidělené IP
 
 | Prostředí | IPv4 | Whitelist potvrzen | Poznámka |
