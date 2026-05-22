@@ -91,10 +91,13 @@ export class EgressClient {
         }
 
         let detail: unknown = null;
-        try {
-          detail = await response.json();
-        } catch {
-          detail = await response.text();
+        const rawText = await response.text();
+        if (rawText) {
+          try {
+            detail = JSON.parse(rawText);
+          } catch {
+            detail = rawText;
+          }
         }
 
         if (response.status >= 500 || response.status === 408 || response.status === 429) {

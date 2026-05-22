@@ -96,8 +96,27 @@ Deno.serve(async (request: Request) => {
 
   if (errors.length > 0) result.errors = errors;
   const status = errors.length > 0 && !result.stats && !result.inquiries ? 502 : 200;
+
+  await pingHealthcheck(errors.length === 0, result);
+
   return jsonResponse(result, status);
 });
+
+async function pingHealthcheck(success: boolean, result: SyncResult): Promise<void> {
+  const baseUrl = Deno.env.get('HEALTHCHECKS_PING_URL');
+  if (!baseUrl) return;
+  const url = success ? baseUrl : `${baseUrl.replace(/\/$/, '')}/fail`;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(result),
+      signal: AbortSignal.timeout(3_000),
+    });
+  } catch (error) {
+    console.warn('healthcheck ping failed', (error as Error).message);
+  }
+}
 
 async function syncStats(
   supabase: any,
