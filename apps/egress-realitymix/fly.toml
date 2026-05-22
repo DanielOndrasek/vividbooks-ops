@@ -1,0 +1,42 @@
+# Fly.io konfigurace pro egress-realitymix.
+# Předpoklady před `fly deploy`:
+#   1. `fly launch --no-deploy --copy-config --name vividbooks-egress-realitymix --region fra`
+#   2. `fly ips allocate-v4`        — vygeneruje dedikovanou veřejnou IPv4 (placený doplněk).
+#      Tuto IP nahlásíme DALTEN media pro whitelist na náš SW klíč.
+#   3. `fly secrets set INTERNAL_EGRESS_TOKEN=... REALITYMIX_RK_ID=... REALITYMIX_RK_PASSWORD=... REALITYMIX_SW_KEY=...`
+#   4. `fly deploy`
+
+app = "vividbooks-egress-realitymix"
+primary_region = "fra"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  REALITYMIX_RPC_URL = "https://realitymix.cz/import/rpc/"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "get"
+    path = "/healthz"
+    protocol = "http"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
