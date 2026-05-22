@@ -1,0 +1,36 @@
+name: Deploy egress-realitymix
+
+# Manuální + na change ve workeru. Vyžaduje GitHub secret FLY_API_TOKEN
+# (osobní deploy token z `fly tokens create deploy --app vividbooks-egress-realitymix`).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/egress-realitymix/**'
+      - '.github/workflows/deploy-egress-realitymix.yml'
+
+concurrency:
+  group: deploy-egress-realitymix
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Fly deploy
+        working-directory: apps/egress-realitymix
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Vypsat veřejné IP (pro whitelist u DALTEN media)
+        working-directory: apps/egress-realitymix
+        run: flyctl ips list
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
