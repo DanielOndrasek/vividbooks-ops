@@ -52,6 +52,7 @@ Přidej jako repository secrets (hodnoty neukládej do gitu):
 | `ANTHROPIC_MODEL` | Volitelné |
 | `AI_CONFIDENCE_THRESHOLD` | Volitelné |
 | `AI_BATCH_LIMIT` | Volitelné |
+| `FLY_API_TOKEN` | Deploy token pro `vividbooks-egress-realitymix` (RealityMIX worker, viz [realitymix-egress.md](realitymix-egress.md)). Generuj přes `flyctl tokens create deploy --app vividbooks-egress-realitymix`. |
 
 Prázdné volitelné secrets workflow přeskočí (v logu bude „Přeskakuji prázdné“).
 

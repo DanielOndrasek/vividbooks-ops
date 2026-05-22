@@ -1,0 +1,19 @@
+services:
+  egress-realitymix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vividbooks-egress-realitymix:dev
+    container_name: egress-realitymix
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      MOCK_MODE: "true"
+      INTERNAL_EGRESS_TOKEN: "${INTERNAL_EGRESS_TOKEN:-dev-token-please-rotate}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
