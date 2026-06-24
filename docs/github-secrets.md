@@ -52,6 +52,8 @@ Přidej jako repository secrets (hodnoty neukládej do gitu):
 | `ANTHROPIC_MODEL` | Volitelné |
 | `AI_CONFIDENCE_THRESHOLD` | Volitelné |
 | `AI_BATCH_LIMIT` | Volitelné |
+| `FULFILLMENT_API_TOKEN` | Token z Fulfillment.cz (Informace → API) — synchronizace skladu (`/inventory`) |
+| `FULFILLMENT_API_URL` | Volitelné; výchozí `https://client.api.fulfillment.cz/v2` |
 
 Prázdné volitelné secrets workflow přeskočí (v logu bude „Přeskakuji prázdné“).
 

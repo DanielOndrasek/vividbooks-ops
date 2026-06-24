@@ -2,7 +2,7 @@
 
 Next.js aplikace: stahování příloh, klasifikace a extrakce (Claude), schvalování faktur, okamžité ukládání dokladů o platbě na **Google Drive** (Shared Drive).
 
-Součástí jsou i další provozní moduly: **Provize** (Pipedrive), **Sales controlling** a **Skladové zásoby** (`/inventory`) — evidence skladových položek, stav zásob a pohyby (příjem / výdej / korekce) s hlídáním minim.
+Součástí jsou i další provozní moduly: **Provize** (Pipedrive), **Sales controlling** a **Skladové zásoby** (`/inventory`) — evidence skladových položek, stav zásob a pohyby (příjem / výdej / korekce) s hlídáním minim. Stav zásob lze synchronizovat z **Fulfillment.cz** (tlačítko *Synchronizovat* nebo hodinový cron `/api/jobs/sync-inventory`); stačí nastavit `FULFILLMENT_API_TOKEN`.
 
 ## Požadavky
 
