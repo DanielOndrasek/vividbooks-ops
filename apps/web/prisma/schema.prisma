@@ -56,6 +56,12 @@ enum InventoryMovementType {
   ADJUSTMENT
 }
 
+/// Původ skladové položky: ruční evidence nebo synchronizace z externího systému (Fulfillment.cz).
+enum InventorySource {
+  MANUAL
+  FULFILLMENT
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -321,11 +327,24 @@ model InventoryItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// Původ položky. MANUAL = ruční; FULFILLMENT = řízeno synchronizací (stav nelze měnit ručně).
+  source            InventorySource @default(MANUAL)
+  /// Identifikátor v externím systému (u FULFILLMENT = variant_id z Fulfillment.cz).
+  externalId        String?
+  /// Dostupné množství (po odečtení rezervací) — plní synchronizace.
+  availableQuantity Decimal?        @db.Decimal(14, 3)
+  /// Rezervované množství — plní synchronizace.
+  reservedQuantity  Decimal?        @db.Decimal(14, 3)
+  /// Čas poslední úspěšné synchronizace z externího systému.
+  lastSyncedAt      DateTime?
+
   movements InventoryMovement[]
 
+  @@unique([source, externalId])
   @@index([active])
   @@index([category])
   @@index([name])
+  @@index([source])
 }
 
 /// Pohyb na skladě (příjem / výdej / korekce). Mění `InventoryItem.quantity` a uchovává historii.
