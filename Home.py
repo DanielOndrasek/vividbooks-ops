@@ -13,7 +13,8 @@ st.title("Vividbooks Operations Space")
 st.markdown(
     "Interní provozní nástroje. **Hlavní aplikace** je jedna webová appka (Next.js na Vercelu): "
     "doklady z Gmailu, schvalování faktur, platby na Drive, výpočet provizí z Pipedrive, "
-    "**Sales controlling** (`/sales-controlling`) a sjednocené **Nastavení** všech API klíčů."
+    "**Sales controlling** (`/sales-controlling`), **Skladové zásoby** (`/inventory`) "
+    "a sjednocené **Nastavení** všech API klíčů."
 )
 
 st.link_button("Otevřít Vividbooks Ops (web)", ops_url, type="primary", use_container_width=False)

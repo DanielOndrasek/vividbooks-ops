@@ -2,6 +2,8 @@
 
 Next.js aplikace: stahování příloh, klasifikace a extrakce (Claude), schvalování faktur, okamžité ukládání dokladů o platbě na **Google Drive** (Shared Drive).
 
+Součástí jsou i další provozní moduly: **Provize** (Pipedrive), **Sales controlling** a **Skladové zásoby** (`/inventory`) — evidence skladových položek, stav zásob a pohyby (příjem / výdej / korekce) s hlídáním minim.
+
 ## Požadavky
 
 - Node.js 20+
