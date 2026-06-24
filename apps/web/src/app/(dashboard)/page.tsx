@@ -3,6 +3,7 @@ import { DocumentType } from "@prisma/client";
 import {
   AlertCircle,
   BarChart3,
+  Boxes,
   ClipboardList,
   CloudUpload,
   Inbox,
@@ -12,6 +13,7 @@ import { auth } from "@/auth";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
+import { stockStatus } from "@/lib/inventory/types";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -209,34 +211,52 @@ export default async function DashboardPage() {
   const monthStart = startOfCurrentMonth(now);
   const nextMonthStart = startOfNextMonth(now);
 
-  const [pendingInvoices, needsReview, paymentStored, aiQueue, lastJobs] =
-    await Promise.all([
-      prisma.invoice.count({
-        where: {
-          document: { status: { in: ["PENDING_APPROVAL", "NEEDS_REVIEW"] } },
-        },
-      }),
-      prisma.document.count({
-        where: {
-          OR: [{ status: "NEEDS_REVIEW" }, { documentType: "UNKNOWN" }],
-        },
-      }),
-      prisma.paymentProof.count({ where: { storedAt: { not: null } } }),
-      prisma.document.count({
-        where: { status: "NEW", documentType: "UNCLASSIFIED" },
-      }),
-      prisma.processingJob.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          createdAt: true,
-          metadata: true,
-        },
-      }),
-    ]);
+  const [
+    pendingInvoices,
+    needsReview,
+    paymentStored,
+    aiQueue,
+    lastJobs,
+    inventoryItems,
+  ] = await Promise.all([
+    prisma.invoice.count({
+      where: {
+        document: { status: { in: ["PENDING_APPROVAL", "NEEDS_REVIEW"] } },
+      },
+    }),
+    prisma.document.count({
+      where: {
+        OR: [{ status: "NEEDS_REVIEW" }, { documentType: "UNKNOWN" }],
+      },
+    }),
+    prisma.paymentProof.count({ where: { storedAt: { not: null } } }),
+    prisma.document.count({
+      where: { status: "NEW", documentType: "UNCLASSIFIED" },
+    }),
+    prisma.processingJob.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        metadata: true,
+      },
+    }),
+    prisma.inventoryItem.findMany({
+      where: { active: true },
+      select: { quantity: true, minQuantity: true },
+    }),
+  ]);
+
+  const inventoryAttention = inventoryItems.filter(
+    (it) =>
+      stockStatus({
+        quantity: Number(it.quantity),
+        minQuantity: it.minQuantity != null ? Number(it.minQuantity) : null,
+      }) !== "ok",
+  ).length;
 
   let monthDocs: MonthlyDocumentForReport[] = [];
   let monthlyReportError: string | null = null;
@@ -294,7 +314,7 @@ export default async function DashboardPage() {
       </header>
 
       <section aria-label="Souhrn">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href="/invoices?status=PENDING_APPROVAL"
             className="group border-border/80 from-card to-muted/20 hover:border-primary/25 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition-all hover:shadow-md"
@@ -342,6 +362,23 @@ export default async function DashboardPage() {
             </div>
             <span className="text-primary mt-3 inline-block text-sm font-medium opacity-0 transition-opacity group-hover:opacity-100">
               Zobrazit platby →
+            </span>
+          </Link>
+          <Link
+            href="/inventory"
+            className="group border-border/80 from-card to-muted/20 hover:border-amber-500/30 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition-all hover:shadow-md"
+          >
+            <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400">
+              <Boxes className="size-5" aria-hidden />
+            </div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Sklad k doplnění
+            </div>
+            <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
+              {inventoryAttention}
+            </div>
+            <span className="mt-3 inline-block text-sm font-medium text-amber-700 opacity-0 transition-opacity group-hover:opacity-100 dark:text-amber-400">
+              Otevřít sklad →
             </span>
           </Link>
         </div>

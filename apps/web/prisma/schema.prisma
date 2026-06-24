@@ -49,6 +49,19 @@ enum PohodaExportStatus {
   FAILED
 }
 
+/// Typ skladového pohybu: příjem, výdej nebo korekce stavu (inventura).
+enum InventoryMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+/// Původ skladové položky: ruční evidence nebo synchronizace z externího systému (Fulfillment.cz).
+enum InventorySource {
+  MANUAL
+  FULFILLMENT
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -63,6 +76,7 @@ model User {
   auditLogs               AuditLog[]
   approvedInvoices        Invoice[]                  @relation("InvoiceApprovedBy")
   commissionSnapshots     CommissionMonthSnapshot[]
+  inventoryMovements      InventoryMovement[]        @relation("InventoryMovementCreatedBy")
 }
 
 /// Uložený výsledek výpočtu provizí za kalendářní měsíc (jeden záznam na year+month).
@@ -288,4 +302,67 @@ model ProcessingJob {
   status      String
   error       String?
   metadata    Json?
+}
+
+/// Skladová položka (zásoba). Aktuální stav v `quantity`, hlídání minima v `minQuantity`.
+model InventoryItem {
+  id          String   @id @default(cuid())
+  /// Skladové / katalogové číslo (unikátní).
+  sku         String   @unique
+  name        String
+  category    String?
+  /// Měrná jednotka (ks, kg, l, m, …).
+  unit        String   @default("ks")
+  /// Aktuální stav na skladě (může být desetinné u vážených jednotek).
+  quantity    Decimal  @default(0) @db.Decimal(14, 3)
+  /// Minimální zásoba — pod ní se položka považuje za „nízkou".
+  minQuantity Decimal? @db.Decimal(14, 3)
+  /// Jednotková cena (pro výpočet hodnoty skladu).
+  unitPrice   Decimal? @db.Decimal(12, 2)
+  currency    String   @default("CZK")
+  location    String?
+  supplier    String?
+  note        String?  @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// Původ položky. MANUAL = ruční; FULFILLMENT = řízeno synchronizací (stav nelze měnit ručně).
+  source            InventorySource @default(MANUAL)
+  /// Identifikátor v externím systému (u FULFILLMENT = variant_id z Fulfillment.cz).
+  externalId        String?
+  /// Dostupné množství (po odečtení rezervací) — plní synchronizace.
+  availableQuantity Decimal?        @db.Decimal(14, 3)
+  /// Rezervované množství — plní synchronizace.
+  reservedQuantity  Decimal?        @db.Decimal(14, 3)
+  /// Čas poslední úspěšné synchronizace z externího systému.
+  lastSyncedAt      DateTime?
+
+  movements InventoryMovement[]
+
+  @@unique([source, externalId])
+  @@index([active])
+  @@index([category])
+  @@index([name])
+  @@index([source])
+}
+
+/// Pohyb na skladě (příjem / výdej / korekce). Mění `InventoryItem.quantity` a uchovává historii.
+model InventoryMovement {
+  id              String                @id @default(cuid())
+  itemId          String
+  item            InventoryItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type            InventoryMovementType
+  /// Zadané množství pohybu (u IN/OUT množství pohybu, u ADJUSTMENT nový absolutní stav). Vždy >= 0.
+  quantity        Decimal               @db.Decimal(14, 3)
+  /// Stav skladu po provedení pohybu (audit).
+  quantityAfter   Decimal               @db.Decimal(14, 3)
+  note            String?               @db.Text
+  createdByUserId String?
+  createdBy       User?                 @relation("InventoryMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime              @default(now())
+
+  @@index([itemId])
+  @@index([createdAt])
+  @@index([type])
 }
