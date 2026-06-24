@@ -35,6 +35,11 @@ export function toInventoryItemDto(row: InventoryItem): InventoryItemDto {
     supplier: row.supplier,
     note: row.note,
     active: row.active,
+    source: row.source,
+    externalId: row.externalId,
+    availableQuantity: toNullableNumber(row.availableQuantity),
+    reservedQuantity: toNullableNumber(row.reservedQuantity),
+    lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

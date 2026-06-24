@@ -2,6 +2,8 @@ export type StockStatus = "ok" | "low" | "out";
 
 export type InventoryMovementType = "IN" | "OUT" | "ADJUSTMENT";
 
+export type InventorySource = "MANUAL" | "FULFILLMENT";
+
 /** Serializovatelná položka skladu (Decimal → number, Date → ISO string). */
 export type InventoryItemDto = {
   id: string;
@@ -17,6 +19,11 @@ export type InventoryItemDto = {
   supplier: string | null;
   note: string | null;
   active: boolean;
+  source: InventorySource;
+  externalId: string | null;
+  availableQuantity: number | null;
+  reservedQuantity: number | null;
+  lastSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

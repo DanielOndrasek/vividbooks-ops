@@ -32,8 +32,9 @@ export default async function InventoryPage() {
       <header className="max-w-3xl">
         <h1 className="text-3xl font-semibold tracking-tight">Skladové zásoby</h1>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-          Evidence skladových položek, aktuální stav zásob a pohyby (příjem, výdej, korekce). Položky pod
-          nastaveným minimem se zvýrazní, ať víš, co je potřeba doobjednat.
+          Evidence skladových položek, aktuální stav zásob a pohyby (příjem, výdej, korekce). Stav lze stahovat
+          z <strong>Fulfillment.cz</strong> (tlačítko Synchronizovat) nebo vést ručně. Položky pod nastaveným
+          minimem se zvýrazní, ať víš, co je potřeba doobjednat.
         </p>
       </header>
 

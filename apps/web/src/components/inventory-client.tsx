@@ -7,9 +7,11 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Boxes,
+  CloudDownload,
   History,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   TriangleAlert,
@@ -175,6 +177,7 @@ export function InventoryClient({
   const [query, setQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -235,6 +238,38 @@ export function InventoryClient({
       // ticho — UI zůstane se starými daty, uživatel může obnovit stránku
     }
     router.refresh();
+  }
+
+  async function runSync() {
+    setSyncing(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/inventory/sync", { method: "POST" });
+      const j = (await res.json()) as {
+        error?: string;
+        fetchedVariants?: number;
+        created?: number;
+        updated?: number;
+        unchanged?: number;
+        skipped?: number;
+      };
+      if (!res.ok) {
+        fail(j.error || "Synchronizace selhala.");
+        return;
+      }
+      await refresh();
+      flash(
+        `Synchronizace z Fulfillment.cz hotová: ${j.fetchedVariants ?? 0} variant — nově ${j.created ?? 0}, ` +
+          `aktualizováno ${j.updated ?? 0}, beze změny ${j.unchanged ?? 0}` +
+          (j.skipped ? `, přeskočeno ${j.skipped}` : "") +
+          ".",
+      );
+    } catch {
+      fail("Synchronizaci se nepodařilo spustit.");
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function parseNum(raw: string): number | null {
@@ -527,19 +562,32 @@ export function InventoryClient({
           </label>
         </div>
         {canWrite && (
-          <Button
-            type="button"
-            size="lg"
-            variant={showAdd ? "secondary" : "default"}
-            onClick={() => {
-              setShowAdd((v) => !v);
-              setErr(null);
-              setMsg(null);
-            }}
-          >
-            <Plus aria-hidden />
-            {showAdd ? "Zavřít formulář" : "Přidat položku"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={syncing || loading}
+              onClick={() => void runSync()}
+              title="Stáhnout aktuální skladové zásoby z Fulfillment.cz"
+            >
+              <RefreshCw aria-hidden className={syncing ? "animate-spin" : undefined} />
+              {syncing ? "Synchronizuji…" : "Synchronizovat z Fulfillment.cz"}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant={showAdd ? "secondary" : "default"}
+              onClick={() => {
+                setShowAdd((v) => !v);
+                setErr(null);
+                setMsg(null);
+              }}
+            >
+              <Plus aria-hidden />
+              {showAdd ? "Zavřít formulář" : "Přidat položku"}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -687,6 +735,7 @@ export function InventoryClient({
                   const value = row.unitPrice != null ? row.unitPrice * row.quantity : null;
                   const isEditing = editingId === row.id;
                   const isMoving = movementItemId === row.id;
+                  const isSynced = row.source === "FULFILLMENT";
                   return (
                     <FragmentRow key={row.id}>
                       <tr
@@ -701,8 +750,16 @@ export function InventoryClient({
                           <div className="font-medium">{row.name}</div>
                           <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                             <span className="font-mono">{row.sku}</span>
+                            {isSynced ? (
+                              <span className="text-primary bg-primary/12 inline-flex items-center gap-0.5 rounded px-1">
+                                <CloudDownload className="size-3" aria-hidden /> Fulfillment.cz
+                              </span>
+                            ) : null}
                             {row.category ? <span>· {row.category}</span> : null}
                             {row.supplier ? <span>· {row.supplier}</span> : null}
+                            {isSynced && row.lastSyncedAt ? (
+                              <span>· sync {fmtDateTime(row.lastSyncedAt)}</span>
+                            ) : null}
                             {!row.active ? (
                               <span className="rounded border border-dashed px-1">neaktivní</span>
                             ) : null}
@@ -711,6 +768,11 @@ export function InventoryClient({
                         <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
                           {fmtQty(row.quantity)}{" "}
                           <span className="text-muted-foreground text-xs">{row.unit}</span>
+                          {row.availableQuantity != null ? (
+                            <div className="text-muted-foreground text-[11px] font-normal">
+                              dostupné {fmtQty(row.availableQuantity)}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
                           {row.minQuantity != null ? fmtQty(row.minQuantity) : "—"}
@@ -748,7 +810,12 @@ export function InventoryClient({
                                 type="button"
                                 size="xs"
                                 variant="secondary"
-                                disabled={loading || !row.active}
+                                disabled={loading || !row.active || isSynced}
+                                title={
+                                  isSynced
+                                    ? "Stav řídí Fulfillment.cz (synchronizace), ruční pohyb není možný."
+                                    : undefined
+                                }
                                 onClick={() => startMovement(row)}
                               >
                                 Pohyb
