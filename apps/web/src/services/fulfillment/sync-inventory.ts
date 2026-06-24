@@ -168,7 +168,9 @@ export async function runFulfillmentInventorySync(opts?: {
       });
 
       if (!existing) {
-        const sku = await resolveUniqueSku(code || extCode || `FF-${externalId}`, externalId);
+        // Preferujeme ext_code (kód e-shopu, např. PF6000-C10) — nese logiku balení a je čitelný.
+        const preferredSku = extCode || code || `FF-${externalId}`;
+        const sku = await resolveUniqueSku(preferredSku, externalId);
         const created = await prisma.inventoryItem.create({
           data: {
             sku,
@@ -182,7 +184,7 @@ export async function runFulfillmentInventorySync(opts?: {
             source: "FULFILLMENT",
             externalId,
             lastSyncedAt: new Date(),
-            note: extCode && extCode !== sku ? `Kód e-shopu: ${extCode}` : null,
+            note: code && code !== sku ? `Fulfillment kód: ${code}` : null,
           },
         });
         result.created += 1;
