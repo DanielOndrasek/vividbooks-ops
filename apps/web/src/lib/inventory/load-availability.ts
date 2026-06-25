@@ -21,7 +21,7 @@ export async function loadAvailability(): Promise<{
 
   const rows = aggregateAvailability(
     items.filter((it) => !isExcludedInventoryItem(it)).map(toInventoryItemDto),
-  );
+  ).filter((row) => !row.baseCode.toUpperCase().startsWith("UF"));
 
   return { rows, summary: summarizeAvailability(rows) };
 }

@@ -1,24 +1,21 @@
 import Link from "next/link";
-import { ArrowLeft, Boxes, PackageCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { auth } from "@/auth";
 import { InventoryAvailabilityTable } from "@/components/inventory-availability";
+import { InventoryLowStock } from "@/components/inventory-low-stock";
 import { InventoryShareControl } from "@/components/inventory-share-control";
 import { loadAvailability } from "@/lib/inventory/load-availability";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-function fmtPieces(n: number): string {
-  return n.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });
-}
-
 export default async function InventoryAvailabilityPage() {
   const session = await auth();
   const role = session?.user?.role;
   const canWrite = role === "ADMIN" || role === "APPROVER";
 
-  const [{ rows, summary }, shareLink] = await Promise.all([
+  const [{ rows }, shareLink] = await Promise.all([
     loadAvailability(),
     canWrite
       ? prisma.inventoryShareLink.findFirst({
@@ -48,26 +45,7 @@ export default async function InventoryAvailabilityPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="border-border/80 from-card to-muted/20 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm">
-          <div className="bg-primary/12 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
-            <Boxes className="size-5" aria-hidden />
-          </div>
-          <div className="text-muted-foreground text-sm font-medium">Produktů</div>
-          <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-            {summary.productCount}
-          </div>
-        </div>
-        <div className="border-border/80 from-card to-muted/20 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm">
-          <div className="bg-primary/12 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
-            <PackageCheck className="size-5" aria-hidden />
-          </div>
-          <div className="text-muted-foreground text-sm font-medium">Celkem dostupných kusů</div>
-          <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-            {fmtPieces(summary.totalPieces)}
-          </div>
-        </div>
-      </section>
+      <InventoryLowStock rows={rows} />
 
       {canWrite && <InventoryShareControl initialToken={shareLink?.token ?? null} />}
 

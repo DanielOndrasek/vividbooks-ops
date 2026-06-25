@@ -1,15 +1,12 @@
 import { notFound } from "next/navigation";
-import { Boxes, PackageCheck } from "lucide-react";
+import { PackageCheck } from "lucide-react";
 
 import { InventoryAvailabilityTable } from "@/components/inventory-availability";
+import { InventoryLowStock } from "@/components/inventory-low-stock";
 import { loadAvailability } from "@/lib/inventory/load-availability";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-
-function fmtPieces(n: number): string {
-  return n.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });
-}
 
 export default async function PublicAvailabilityPage({
   params,
@@ -26,7 +23,7 @@ export default async function PublicAvailabilityPage({
     notFound();
   }
 
-  const { rows, summary } = await loadAvailability();
+  const { rows } = await loadAvailability();
 
   return (
     <div className="from-background via-background to-muted/30 min-h-screen bg-gradient-to-b">
@@ -45,26 +42,7 @@ export default async function PublicAvailabilityPage({
             </p>
           </header>
 
-          <section className="grid gap-4 sm:grid-cols-2">
-            <div className="border-border/80 from-card to-muted/20 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm">
-              <div className="bg-primary/12 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
-                <Boxes className="size-5" aria-hidden />
-              </div>
-              <div className="text-muted-foreground text-sm font-medium">Produktů</div>
-              <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-                {summary.productCount}
-              </div>
-            </div>
-            <div className="border-border/80 from-card to-muted/20 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm">
-              <div className="bg-primary/12 text-primary mb-3 flex size-10 items-center justify-center rounded-xl">
-                <PackageCheck className="size-5" aria-hidden />
-              </div>
-              <div className="text-muted-foreground text-sm font-medium">Celkem dostupných kusů</div>
-              <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-                {fmtPieces(summary.totalPieces)}
-              </div>
-            </div>
-          </section>
+          <InventoryLowStock rows={rows} />
 
           <InventoryAvailabilityTable rows={rows} />
         </div>
