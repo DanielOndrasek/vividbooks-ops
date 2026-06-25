@@ -16,7 +16,7 @@
     },
     {
       "path": "/api/jobs/sync-inventory",
-      "schedule": "0 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }
