@@ -347,6 +347,20 @@ model InventoryItem {
   @@index([source])
 }
 
+/// Veřejný sdílený odkaz na přehled dostupné zásoby (read-only, bez přihlášení).
+/// Aktivní je vždy nejvýše jeden; přístup řídí náhodný `token` v URL.
+model InventoryShareLink {
+  id              String   @id @default(cuid())
+  /// Náhodný token v URL (`/share/availability/<token>`).
+  token           String   @unique
+  active          Boolean  @default(true)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active])
+}
+
 /// Pohyb na skladě (příjem / výdej / korekce). Mění `InventoryItem.quantity` a uchovává historii.
 model InventoryMovement {
   id              String                @id @default(cuid())

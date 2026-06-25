@@ -18,6 +18,7 @@ export default auth((req) => {
   if (
     path.startsWith("/login") ||
     path.startsWith("/api/auth") ||
+    path.startsWith("/share") ||
     path.startsWith("/_next") ||
     path === "/favicon.ico"
   ) {
