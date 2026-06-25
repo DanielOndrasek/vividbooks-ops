@@ -7,6 +7,14 @@ import { cn } from "@/lib/utils";
 export const LOW_STOCK_THRESHOLD = 100;
 export const CRITICAL_STOCK_THRESHOLD = 50;
 
+/** Prefixy kódů, které se v seznamu nízké zásoby vůbec neukazují (zůstávají jen v hlavní tabulce). */
+const LOW_STOCK_EXCLUDED_PREFIXES = ["SPC", "SPF"];
+
+function isLowStockExcluded(baseCode: string): boolean {
+  const code = baseCode.trim().toUpperCase();
+  return LOW_STOCK_EXCLUDED_PREFIXES.some((prefix) => code.startsWith(prefix));
+}
+
 function fmtPieces(n: number): string {
   return n.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });
 }
@@ -14,7 +22,11 @@ function fmtPieces(n: number): string {
 /** Seznam produktů s nízkou dostupnou zásobou (< 100 ks); kriticky (< 50 ks) zvýrazněné červeně. */
 export function InventoryLowStock({ rows }: { rows: AvailabilityRow[] }) {
   const low = rows
-    .filter((row) => row.totalPieces < LOW_STOCK_THRESHOLD)
+    .filter(
+      (row) =>
+        row.totalPieces < LOW_STOCK_THRESHOLD &&
+        !isLowStockExcluded(row.baseCode),
+    )
     .sort((a, b) => a.totalPieces - b.totalPieces);
 
   const criticalCount = low.filter(
