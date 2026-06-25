@@ -1,5 +1,9 @@
 import { Prisma } from "@prisma/client";
 
+import {
+  EXCLUDED_INVENTORY_CODES,
+  isExcludedInventoryCode,
+} from "@/lib/inventory/excluded-codes";
 import { getFulfillmentEnv } from "@/lib/integrations/fulfillment-env";
 import { prisma } from "@/lib/prisma";
 import {
@@ -18,6 +22,8 @@ export type FulfillmentSyncResult = {
   unchanged: number;
   movementsRecorded: number;
   skipped: number;
+  /** Počet variant vyřazených konfigurací (nikdy se nesynchronizují/nezobrazují). */
+  excluded: number;
 };
 
 type VariantMeta = {
@@ -109,12 +115,27 @@ export async function runFulfillmentInventorySync(opts?: {
     unchanged: 0,
     movementsRecorded: 0,
     skipped: 0,
+    excluded: 0,
   };
 
   const cfg = getFulfillmentEnv();
   if (!cfg.configured) {
     const error = "Chybí FULFILLMENT_API_TOKEN — nastav ho v prostředí.";
     return { ...result, error };
+  }
+
+  // Úklid: odstraň dříve nasynchronizované položky s vyřazenými kódy (smaže i jejich pohyby).
+  try {
+    const purged = await prisma.inventoryItem.deleteMany({
+      where: { sku: { in: [...EXCLUDED_INVENTORY_CODES] } },
+    });
+    if (purged.count > 0) {
+      console.log(
+        `[fulfillment-sync] odstraněno ${purged.count} vyřazených položek`,
+      );
+    }
+  } catch (e) {
+    console.error("[fulfillment-sync] úklid vyřazených položek selhal", e);
   }
 
   let products: FulfillmentProduct[];
@@ -145,6 +166,12 @@ export async function runFulfillmentInventorySync(opts?: {
     const externalId = String(wv.variant_id);
     const code = (wv.code ?? "").trim();
     const extCode = (wv.ext_code ?? "").trim();
+
+    if (isExcludedInventoryCode(code, extCode)) {
+      result.excluded += 1;
+      continue;
+    }
+
     const meta = code ? metaByCode.get(code) : undefined;
     const name = displayName(meta, code, extCode);
 
@@ -245,6 +272,7 @@ export async function runFulfillmentInventorySync(opts?: {
     unchanged: result.unchanged,
     movementsRecorded: result.movementsRecorded,
     skipped: result.skipped,
+    excluded: result.excluded,
   });
 
   return result;
