@@ -571,10 +571,10 @@ export function InventoryClient({
               variant="outline"
               disabled={syncing || loading}
               onClick={() => void runSync()}
-              title="Stáhnout aktuální skladové zásoby z Fulfillment.cz"
+              title="Aktualizovat skladové zásoby z Fulfillment.cz (automaticky se spouští každou hodinu)"
             >
               <RefreshCw aria-hidden className={syncing ? "animate-spin" : undefined} />
-              {syncing ? "Synchronizuji…" : "Synchronizovat z Fulfillment.cz"}
+              {syncing ? "Aktualizuji…" : "Aktualizovat"}
             </Button>
             <Button
               type="button"

@@ -2,7 +2,7 @@
 
 Next.js aplikace: stahování příloh, klasifikace a extrakce (Claude), schvalování faktur, okamžité ukládání dokladů o platbě na **Google Drive** (Shared Drive).
 
-Součástí jsou i další provozní moduly: **Provize** (Pipedrive), **Sales controlling** a **Skladové zásoby** (`/inventory`) — evidence skladových položek, stav zásob a pohyby (příjem / výdej / korekce) s hlídáním minim. Stav zásob lze synchronizovat z **Fulfillment.cz** (tlačítko *Synchronizovat* nebo denní cron `/api/jobs/sync-inventory`); stačí nastavit `FULFILLMENT_API_TOKEN`.
+Součástí jsou i další provozní moduly: **Provize** (Pipedrive), **Sales controlling** a **Skladové zásoby** (`/inventory`) — evidence skladových položek, stav zásob a pohyby (příjem / výdej / korekce) s hlídáním minim. Stav zásob lze synchronizovat z **Fulfillment.cz** (tlačítko *Aktualizovat* nebo hodinová automatická aktualizace); stačí nastavit `FULFILLMENT_API_TOKEN`. Hodinové spouštění zajišťuje GitHub Actions workflow `Sync inventory (hourly)` (`.github/workflows/sync-inventory.yml`), který volá `GET /api/jobs/sync-inventory` (`Authorization: Bearer CRON_SECRET`) — Vercel Hobby plán hodinové crony neumožňuje.
 
 ## Požadavky
 
@@ -34,9 +34,9 @@ Z monorepo kořene repozitáře: `npm run dev` (spustí tento workspace).
 
 `ADMIN`, `APPROVER`, `VIEWER` — nastavte v tabulce `User` (sloupec `role`) po prvním přihlášení.
 
-## Cron (Vercel)
+## Cron
 
-V `vercel.json` jsou naplánované `GET` joby s hlavičkou `Authorization: Bearer CRON_SECRET`.
+V `vercel.json` jsou naplánované denní `GET` joby s hlavičkou `Authorization: Bearer CRON_SECRET` (poll-email, process-documents, prune-invoices-db). Hodinová aktualizace skladu běží mimo Vercel — přes GitHub Actions workflow `Sync inventory (hourly)`, který volá stejný typ endpointu (`/api/jobs/sync-inventory`). Pro běh workflow je potřeba mít v GitHub secrets `CRON_SECRET` (volitelně `APP_URL`, jinak se použije `https://vividbooks-ops.vercel.app`).
 
 ## Migrace databáze v produkci
 
