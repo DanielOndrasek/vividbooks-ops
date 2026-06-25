@@ -27,6 +27,26 @@ export function parsePackaging(code: string): PackagingParse {
   return { baseCode: trimmed, multiplier: 1, isPack: false };
 }
 
+/**
+ * Ruční sloučení produktů, jejichž kód kartonu neodpovídá single variantě
+ * (karton má v ext_code „0" navíc — `PMV910` × karton `PMV9100`).
+ * Klíč i hodnota jsou základní kódy (bez balení `-C<N>`), velkými písmeny.
+ */
+const SKU_BASE_ALIASES: Record<string, string> = {
+  PMV9100: "PMV910",
+  PMV9200: "PMV920",
+};
+
+/**
+ * Normalizace základního kódu pro seskupení dostupnosti:
+ *  - odstraní kolizní příponu „ [FF 12345]" (vzniká při shodě SKU během synchronizace),
+ *  - sloučí ručně mapované karton/single varianty (SKU_BASE_ALIASES).
+ */
+export function normalizeBaseCode(baseCode: string): string {
+  const cleaned = baseCode.replace(/\s*\[FF\s+\d+\]\s*$/i, "").trim();
+  return SKU_BASE_ALIASES[cleaned.toUpperCase()] ?? cleaned;
+}
+
 export type AvailabilityComponent = {
   sku: string;
   name: string;
@@ -63,19 +83,20 @@ export function aggregateAvailability(items: InventoryItemDto[]): AvailabilityRo
       continue;
     }
     const { baseCode, multiplier } = parsePackaging(item.sku);
+    const groupKey = normalizeBaseCode(baseCode);
     const available = availableOf(item);
     const pieces = available * multiplier;
 
-    let row = groups.get(baseCode);
+    let row = groups.get(groupKey);
     if (!row) {
       row = {
-        baseCode,
+        baseCode: groupKey,
         name: "",
         unit: item.unit || "ks",
         totalPieces: 0,
         components: [],
       };
-      groups.set(baseCode, row);
+      groups.set(groupKey, row);
     }
     row.totalPieces += pieces;
     row.components.push({
