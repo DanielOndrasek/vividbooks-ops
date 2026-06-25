@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 
 import {
-  EXCLUDED_INVENTORY_CODES,
   isExcludedInventoryCode,
+  isExcludedInventoryItem,
 } from "@/lib/inventory/excluded-codes";
 import { getFulfillmentEnv } from "@/lib/integrations/fulfillment-env";
 import { prisma } from "@/lib/prisma";
@@ -125,11 +125,18 @@ export async function runFulfillmentInventorySync(opts?: {
   }
 
   // Úklid: odstraň dříve nasynchronizované položky s vyřazenými kódy (smaže i jejich pohyby).
+  // Matchuje podle SKU i Fulfillment kódu (v note), proto se filtruje v paměti.
   try {
-    const purged = await prisma.inventoryItem.deleteMany({
-      where: { sku: { in: [...EXCLUDED_INVENTORY_CODES] } },
+    const candidates = await prisma.inventoryItem.findMany({
+      select: { id: true, sku: true, note: true },
     });
-    if (purged.count > 0) {
+    const purgeIds = candidates
+      .filter((it) => isExcludedInventoryItem(it))
+      .map((it) => it.id);
+    if (purgeIds.length > 0) {
+      const purged = await prisma.inventoryItem.deleteMany({
+        where: { id: { in: purgeIds } },
+      });
       console.log(
         `[fulfillment-sync] odstraněno ${purged.count} vyřazených položek`,
       );

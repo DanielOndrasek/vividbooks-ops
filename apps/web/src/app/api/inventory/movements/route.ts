@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/api-session";
-import { excludedInventoryMovementWhere } from "@/lib/inventory/excluded-codes";
+import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
 import { toInventoryMovementDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
@@ -24,17 +24,19 @@ export async function GET(req: NextRequest) {
     : DEFAULT_LIMIT;
 
   const rows = await prisma.inventoryMovement.findMany({
-    where: {
-      ...(itemId ? { itemId } : {}),
-      ...excludedInventoryMovementWhere,
-    },
+    where: itemId ? { itemId } : undefined,
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: limit * 2,
     include: {
-      item: { select: { name: true, sku: true, unit: true } },
+      item: { select: { name: true, sku: true, unit: true, note: true } },
       createdBy: { select: { name: true, email: true } },
     },
   });
 
-  return NextResponse.json({ movements: rows.map(toInventoryMovementDto) });
+  const movements = rows
+    .filter((row) => !isExcludedInventoryItem(row.item))
+    .slice(0, limit)
+    .map(toInventoryMovementDto);
+
+  return NextResponse.json({ movements });
 }

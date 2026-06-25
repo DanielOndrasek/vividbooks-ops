@@ -3,10 +3,7 @@ import { PackageCheck } from "lucide-react";
 
 import { auth } from "@/auth";
 import { InventoryClient } from "@/components/inventory-client";
-import {
-  excludedInventoryItemWhere,
-  excludedInventoryMovementWhere,
-} from "@/lib/inventory/excluded-codes";
+import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
 import {
   toInventoryItemDto,
   toInventoryMovementDto,
@@ -20,21 +17,24 @@ export default async function InventoryPage() {
   const role = session?.user?.role;
   const canWrite = role === "ADMIN" || role === "APPROVER";
 
-  const [items, movements] = await Promise.all([
+  const [itemsRaw, movementsRaw] = await Promise.all([
     prisma.inventoryItem.findMany({
-      where: excludedInventoryItemWhere,
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     prisma.inventoryMovement.findMany({
-      where: excludedInventoryMovementWhere,
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 40,
       include: {
-        item: { select: { name: true, sku: true, unit: true } },
+        item: { select: { name: true, sku: true, unit: true, note: true } },
         createdBy: { select: { name: true, email: true } },
       },
     }),
   ]);
+
+  const items = itemsRaw.filter((it) => !isExcludedInventoryItem(it));
+  const movements = movementsRaw
+    .filter((m) => !isExcludedInventoryItem(m.item))
+    .slice(0, 20);
 
   return (
     <div className="space-y-8">
