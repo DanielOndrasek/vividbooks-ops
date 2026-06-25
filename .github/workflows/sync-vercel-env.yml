@@ -55,5 +55,7 @@ jobs:
           PIPEDRIVE_API_TOKEN: ${{ secrets.PIPEDRIVE_API_TOKEN }}
           PIPEDRIVE_DOMAIN: ${{ secrets.PIPEDRIVE_DOMAIN }}
           PIPEDRIVE_CATEGORY_FIELD_KEY: ${{ secrets.PIPEDRIVE_CATEGORY_FIELD_KEY }}
+          FULFILLMENT_API_TOKEN: ${{ secrets.FULFILLMENT_API_TOKEN }}
+          FULFILLMENT_API_URL: ${{ secrets.FULFILLMENT_API_URL }}
           OPS_ADMIN_CONTACT: ${{ secrets.OPS_ADMIN_CONTACT }}
         run: bash .github/scripts/sync-vercel-env.sh
