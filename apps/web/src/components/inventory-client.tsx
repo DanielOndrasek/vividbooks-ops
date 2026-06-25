@@ -253,6 +253,7 @@ export function InventoryClient({
         updated?: number;
         unchanged?: number;
         skipped?: number;
+        excluded?: number;
       };
       if (!res.ok) {
         fail(j.error || "Synchronizace selhala.");
@@ -263,6 +264,7 @@ export function InventoryClient({
         `Synchronizace z Fulfillment.cz hotová: ${j.fetchedVariants ?? 0} variant — nově ${j.created ?? 0}, ` +
           `aktualizováno ${j.updated ?? 0}, beze změny ${j.unchanged ?? 0}` +
           (j.skipped ? `, přeskočeno ${j.skipped}` : "") +
+          (j.excluded ? `, vyřazeno ${j.excluded}` : "") +
           ".",
       );
     } catch {

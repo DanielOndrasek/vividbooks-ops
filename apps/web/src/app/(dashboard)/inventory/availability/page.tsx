@@ -7,6 +7,7 @@ import {
   aggregateAvailability,
   summarizeAvailability,
 } from "@/lib/inventory/availability";
+import { excludedInventoryItemWhere } from "@/lib/inventory/excluded-codes";
 import { toInventoryItemDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
@@ -20,7 +21,7 @@ export default async function InventoryAvailabilityPage() {
   await auth();
 
   const items = await prisma.inventoryItem.findMany({
-    where: { active: true },
+    where: { active: true, ...excludedInventoryItemWhere },
     orderBy: [{ name: "asc" }],
   });
 

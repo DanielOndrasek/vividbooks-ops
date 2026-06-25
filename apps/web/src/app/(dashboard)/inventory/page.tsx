@@ -4,6 +4,10 @@ import { PackageCheck } from "lucide-react";
 import { auth } from "@/auth";
 import { InventoryClient } from "@/components/inventory-client";
 import {
+  excludedInventoryItemWhere,
+  excludedInventoryMovementWhere,
+} from "@/lib/inventory/excluded-codes";
+import {
   toInventoryItemDto,
   toInventoryMovementDto,
 } from "@/lib/inventory/serialize";
@@ -18,9 +22,11 @@ export default async function InventoryPage() {
 
   const [items, movements] = await Promise.all([
     prisma.inventoryItem.findMany({
+      where: excludedInventoryItemWhere,
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     prisma.inventoryMovement.findMany({
+      where: excludedInventoryMovementWhere,
       orderBy: { createdAt: "desc" },
       take: 20,
       include: {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/api-session";
+import { excludedInventoryMovementWhere } from "@/lib/inventory/excluded-codes";
 import { toInventoryMovementDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
@@ -23,7 +24,10 @@ export async function GET(req: NextRequest) {
     : DEFAULT_LIMIT;
 
   const rows = await prisma.inventoryMovement.findMany({
-    where: itemId ? { itemId } : undefined,
+    where: {
+      ...(itemId ? { itemId } : {}),
+      ...excludedInventoryMovementWhere,
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {
