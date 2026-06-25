@@ -563,19 +563,19 @@ export function InventoryClient({
             <span className="text-muted-foreground">Zobrazit i neaktivní</span>
           </label>
         </div>
-        {canWrite && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              disabled={syncing || loading}
-              onClick={() => void runSync()}
-              title="Aktualizovat skladové zásoby z Fulfillment.cz (automaticky se spouští každou hodinu)"
-            >
-              <RefreshCw aria-hidden className={syncing ? "animate-spin" : undefined} />
-              {syncing ? "Aktualizuji…" : "Aktualizovat"}
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            disabled={syncing}
+            onClick={() => void runSync()}
+            title="Aktualizovat skladové zásoby z Fulfillment.cz (automaticky se spouští i každou hodinu)"
+          >
+            <RefreshCw aria-hidden className={syncing ? "animate-spin" : undefined} />
+            {syncing ? "Aktualizuji…" : "Aktualizovat"}
+          </Button>
+          {canWrite && (
             <Button
               type="button"
               size="lg"
@@ -589,8 +589,8 @@ export function InventoryClient({
               <Plus aria-hidden />
               {showAdd ? "Zavřít formulář" : "Přidat položku"}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {canWrite && showAdd && (

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
 import { writeAuditLog } from "@/lib/audit";
-import { EXCLUDED_INVENTORY_CODES } from "@/lib/inventory/excluded-codes";
+import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
 import { toInventoryItemDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
@@ -37,9 +37,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
   const includeInactive = req.nextUrl.searchParams.get("includeInactive") === "1";
 
-  const where: Prisma.InventoryItemWhereInput = {
-    sku: { notIn: [...EXCLUDED_INVENTORY_CODES] },
-  };
+  const where: Prisma.InventoryItemWhereInput = {};
   if (!includeInactive) {
     where.active = true;
   }
@@ -57,7 +55,10 @@ export async function GET(req: NextRequest) {
     where,
     orderBy: [{ active: "desc" }, { name: "asc" }],
   });
-  return NextResponse.json({ items: rows.map(toInventoryItemDto) });
+  const items = rows
+    .filter((row) => !isExcludedInventoryItem(row))
+    .map(toInventoryItemDto);
+  return NextResponse.json({ items });
 }
 
 export async function POST(req: NextRequest) {
