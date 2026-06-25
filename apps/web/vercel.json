@@ -13,10 +13,6 @@
     {
       "path": "/api/jobs/prune-invoices-db",
       "schedule": "45 7 * * *"
-    },
-    {
-      "path": "/api/jobs/sync-inventory",
-      "schedule": "0 5 * * *"
     }
   ]
 }

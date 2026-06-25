@@ -1,0 +1,47 @@
+# Hodinová automatická aktualizace skladových zásob z Fulfillment.cz.
+# Vercel Hobby plán nepovoluje hodinové crony, proto plánujeme přes GitHub Actions
+# a voláme produkční endpoint GET /api/jobs/sync-inventory (Bearer CRON_SECRET).
+
+name: Sync inventory (hourly)
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-inventory
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger inventory sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Chybí secret CRON_SECRET." >&2
+            exit 1
+          fi
+
+          BASE="${APP_URL:-https://vividbooks-ops.vercel.app}"
+          BASE="${BASE%/}"
+          echo "Volám ${BASE}/api/jobs/sync-inventory"
+
+          code=$(curl -sS -m 300 -o /tmp/sync.json -w "%{http_code}" -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/jobs/sync-inventory")
+
+          echo "HTTP ${code}"
+          cat /tmp/sync.json 2>/dev/null || true
+          echo
+
+          if [ "${code}" != "200" ]; then
+            echo "::error::Synchronizace skladu selhala (HTTP ${code})." >&2
+            exit 1
+          fi
