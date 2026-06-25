@@ -4,7 +4,7 @@ import type { AvailabilityRow } from "@/lib/inventory/availability";
 import { cn } from "@/lib/utils";
 
 /** Práh nízké zásoby (ks) a kritického stavu (ks). */
-export const LOW_STOCK_THRESHOLD = 100;
+export const LOW_STOCK_THRESHOLD = 200;
 export const CRITICAL_STOCK_THRESHOLD = 50;
 
 /** Prefixy kódů, které se v seznamu nízké zásoby vůbec neukazují (zůstávají jen v hlavní tabulce). */
