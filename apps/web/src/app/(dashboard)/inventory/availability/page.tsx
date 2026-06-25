@@ -3,12 +3,8 @@ import { ArrowLeft, Boxes, PackageCheck } from "lucide-react";
 
 import { auth } from "@/auth";
 import { InventoryAvailabilityTable } from "@/components/inventory-availability";
-import {
-  aggregateAvailability,
-  summarizeAvailability,
-} from "@/lib/inventory/availability";
-import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
-import { toInventoryItemDto } from "@/lib/inventory/serialize";
+import { InventoryShareControl } from "@/components/inventory-share-control";
+import { loadAvailability } from "@/lib/inventory/load-availability";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -18,17 +14,20 @@ function fmtPieces(n: number): string {
 }
 
 export default async function InventoryAvailabilityPage() {
-  await auth();
+  const session = await auth();
+  const role = session?.user?.role;
+  const canWrite = role === "ADMIN" || role === "APPROVER";
 
-  const items = await prisma.inventoryItem.findMany({
-    where: { active: true },
-    orderBy: [{ name: "asc" }],
-  });
-
-  const rows = aggregateAvailability(
-    items.filter((it) => !isExcludedInventoryItem(it)).map(toInventoryItemDto),
-  );
-  const summary = summarizeAvailability(rows);
+  const [{ rows, summary }, shareLink] = await Promise.all([
+    loadAvailability(),
+    canWrite
+      ? prisma.inventoryShareLink.findFirst({
+          where: { active: true },
+          orderBy: { createdAt: "desc" },
+          select: { token: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -69,6 +68,8 @@ export default async function InventoryAvailabilityPage() {
           </div>
         </div>
       </section>
+
+      {canWrite && <InventoryShareControl initialToken={shareLink?.token ?? null} />}
 
       <InventoryAvailabilityTable rows={rows} />
     </div>
