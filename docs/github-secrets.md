@@ -77,6 +77,14 @@ Migrace DB (jednorázově z počítače s produkčním `DATABASE_URL`):
 cd apps/web && npx prisma migrate deploy
 ```
 
+## 4b. Hodinová synchronizace skladu (Fulfillment.cz)
+
+Vercel **Hobby** plán umí cron jen 1× denně, proto hodinovou synchronizaci skladu řídí GitHub Actions workflow **`Sync inventory (hourly)`** (`.github/workflows/sync-inventory.yml`). Každou hodinu zavolá produkční endpoint `/api/jobs/sync-inventory` s hlavičkou `Authorization: Bearer <CRON_SECRET>`.
+
+- **Vyžaduje repository secret `CRON_SECRET`** (Settings → Secrets and variables → **Actions**) se **stejnou hodnotou** jako `CRON_SECRET` na Vercelu. Bez něj běhy padají na „Chybí secret CRON_SECRET" a sklad se neaktualizuje.
+- Cílovou URL lze přepsat repository **variable** `APP_URL` (jinak `https://vividbooks-ops.vercel.app`).
+- Naplánované běhy fungují jen z větve **main**. Ručně: **Actions → „Sync inventory (hourly)" → Run workflow**.
+
 ## 5. Streamlit Cloud
 
 V [share.streamlit.io](https://share.streamlit.io) v **Secrets** zkopíruj stejné hodnoty, které potřebuje Streamlit (Pipedrive, `DOKLADY_APP_URL` = URL z Vercelu, …). GitHub Actions je na Streamlit zatím neposílá — zdroj pravdy je seznam výše; po změně aktualizuj obě konzole, dokud nepřidáme druhý workflow.

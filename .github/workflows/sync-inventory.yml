@@ -1,13 +1,18 @@
 # Hodinová automatická aktualizace skladových zásob z Fulfillment.cz.
 # Vercel Hobby plán nepovoluje hodinové crony, proto plánujeme přes GitHub Actions
 # a voláme produkční endpoint GET /api/jobs/sync-inventory (Bearer CRON_SECRET).
+#
+# VYŽADUJE repository secret CRON_SECRET se stejnou hodnotou jako CRON_SECRET na Vercelu.
+# (Bez něj běh skončí chybou "Chybí secret CRON_SECRET".)
+# Naplánované běhy jdou jen z větve main. Ručně: Actions → tento workflow → Run workflow.
+# Cílovou URL lze přepsat repository variable APP_URL (jinak produkční doména).
 
 name: Sync inventory (hourly)
 
 on:
   schedule:
     - cron: "0 * * * *"
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 concurrency:
   group: sync-inventory
@@ -20,12 +25,12 @@ jobs:
       - name: Trigger inventory sync
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: ${{ secrets.APP_URL }}
+          APP_URL: ${{ vars.APP_URL || 'https://vividbooks-ops.vercel.app' }}
         run: |
           set -euo pipefail
 
           if [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::Chybí secret CRON_SECRET." >&2
+            echo "::error::Chybí repository secret CRON_SECRET (Settings → Secrets and variables → Actions). Musí mít stejnou hodnotu jako CRON_SECRET na Vercelu." >&2
             exit 1
           fi
 
@@ -33,7 +38,9 @@ jobs:
           BASE="${BASE%/}"
           echo "Volám ${BASE}/api/jobs/sync-inventory"
 
-          code=$(curl -sS -m 300 -o /tmp/sync.json -w "%{http_code}" -X GET \
+          # Sync může kvůli cold startu / delší odpovědi API selhat jednorázově → pár pokusů.
+          code=$(curl -sS -m 300 --retry 3 --retry-delay 15 --retry-all-errors \
+            -o /tmp/sync.json -w "%{http_code}" -X GET \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${BASE}/api/jobs/sync-inventory")
 
@@ -42,6 +49,8 @@ jobs:
           echo
 
           if [ "${code}" != "200" ]; then
-            echo "::error::Synchronizace skladu selhala (HTTP ${code})." >&2
+            echo "::error::Synchronizace skladu selhala (HTTP ${code}). 401 = špatný/chybějící CRON_SECRET (neshoduje se s Vercelem); 502 = chyba API Fulfillment.cz (zkontroluj FULFILLMENT_API_TOKEN)." >&2
             exit 1
           fi
+
+          echo "Synchronizace skladu proběhla úspěšně."
