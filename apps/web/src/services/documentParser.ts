@@ -21,10 +21,8 @@ function getAnthropicClient() {
 }
 
 export function getAnthropicModelId(): string {
-  return (
-    process.env.ANTHROPIC_MODEL?.trim() ||
-    "claude-sonnet-4-20250514"
-  );
+  // claude-sonnet-4-20250514 byl 15. 6. 2026 vyřazen z API (404) — doporučená náhrada je claude-sonnet-4-6.
+  return process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
 }
 
 function guessMediaType(filename: string): string {
