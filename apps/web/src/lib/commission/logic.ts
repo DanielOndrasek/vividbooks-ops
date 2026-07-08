@@ -5,6 +5,7 @@
 import {
   CATEGORIES_SHARED_INTERACTIVE_PIPELINES,
   COMMISSION_RULES,
+  findCommissionOwnerOverride,
   INTERACTIVE_PIPELINE_FALLBACK_KIND,
   PIPELINE_ID_TO_INTERACTIVE_KIND,
   type CommissionRule,
@@ -508,8 +509,6 @@ export function computeCommissionsForMonth(
     }
 
     const value = dealMonetaryValue(deal);
-    const rate = Number(rule.rate);
-    const commission = value * rate;
     const ccy = dealCurrency(deal);
     const uid = extractUserId(deal);
     let ownerName =
@@ -518,6 +517,12 @@ export function computeCommissionsForMonth(
     if (!ownerName && uid != null) {
       ownerName = `User #${uid}`;
     }
+
+    // Výjimka pro konkrétního obchodníka (např. Eduard Malachovský 50 % na SK pipelines)
+    // má přednost před obecnou sazbou z pravidla.
+    const override = findCommissionOwnerOverride(uid, ownerName, plId);
+    const rate = override ? Number(override.rate) : Number(rule.rate);
+    const commission = value * rate;
 
     const did = deal.id;
     let dealId = 0;

@@ -15,6 +15,7 @@ from vividbooks_ops.tools.commission.rules import (
     COMMISSION_RULES,
     INTERACTIVE_PIPELINE_FALLBACK_KIND,
     PIPELINE_ID_TO_INTERACTIVE_KIND,
+    find_commission_owner_override,
 )
 
 
@@ -412,8 +413,6 @@ def compute_commissions_for_month(
             continue
 
         value = deal_monetary_value(deal)
-        rate = float(rule["rate"])
-        commission = value * rate
         ccy = deal_currency(deal)
 
         uid = extract_user_id(deal)
@@ -422,6 +421,12 @@ def compute_commissions_for_month(
         )
         if not owner_name and uid is not None:
             owner_name = f"User #{uid}"
+
+        # Výjimka pro konkrétního obchodníka (např. Eduard Malachovský 50 % na SK pipelines)
+        # má přednost před obecnou sazbou z pravidla.
+        override = find_commission_owner_override(uid, owner_name, pl_id)
+        rate = float(override["rate"]) if override else float(rule["rate"])
+        commission = value * rate
 
         did = deal.get("id")
         try:
