@@ -92,7 +92,8 @@ export function getPipedriveEnv(): PipedriveEnvStatus {
   };
 }
 
-const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+// claude-sonnet-4-20250514 byl 15. 6. 2026 vyřazen z API (404) — doporučená náhrada je claude-sonnet-4-6.
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 function resolveAiConfidenceThreshold(): number {
   const n = Number(process.env.AI_CONFIDENCE_THRESHOLD);
