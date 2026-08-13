@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { errorMessageFromUnknown, readFetchJson } from "@/lib/api-json";
 
 export type NeedsReviewRowDto = {
   documentId: string;
@@ -33,6 +35,7 @@ type Props = {
 
 export function NeedsReviewTable({ rows, canAct }: Props) {
   const router = useRouter();
+  const { confirm, dialog } = useConfirmDialog();
   const [busyDoc, setBusyDoc] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -102,7 +105,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         body: JSON.stringify({ action, reason }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -114,27 +117,34 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Akce selhala."));
     } finally {
       setBusyDoc(null);
     }
   }
 
   async function deleteDocument(documentId: string) {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Smazat doklad",
+      description:
         "Trvale smazat tento doklad včetně související faktury nebo evidence platby v databázi? Tuto akci nelze vrátit. Soubory na Google Drive se tím nesmažou.",
-      )
-    ) {
+      confirmLabel: "Smazat",
+      variant: "destructive",
+    });
+    if (!ok) {
       return;
     }
     setBusyDoc(documentId);
     setMessage(null);
     try {
       const res = await fetch(`/api/documents/${documentId}`, {
-        method: "DELETE",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete" }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -146,6 +156,8 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Smazání selhalo."));
     } finally {
       setBusyDoc(null);
     }
@@ -156,11 +168,13 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
       return;
     }
     const n = selectedDeletable.length;
-    if (
-      !window.confirm(
-        `Trvale smazat ${n} dokladů včetně souvisejících faktur nebo evidence plateb v databázi? Soubory na Google Drive se tím nesmažou.`,
-      )
-    ) {
+    const ok = await confirm({
+      title: "Smazat doklady",
+      description: `Trvale smazat ${n} dokladů včetně souvisejících faktur nebo evidence plateb v databázi? Soubory na Google Drive se tím nesmažou.`,
+      confirmLabel: "Smazat",
+      variant: "destructive",
+    });
+    if (!ok) {
       return;
     }
     setBulkDeleting(true);
@@ -172,12 +186,12 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         body: JSON.stringify({ documentIds: selectedDeletable }),
         cache: "no-store",
       });
-      const data = (await res.json()) as {
+      const data = await readFetchJson<{
         error?: string;
         deleted?: number;
         failed?: number;
         results?: { documentId: string; ok: boolean; error?: string }[];
-      };
+      }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -196,15 +210,20 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
       setMessage(parts.join(" "));
       setSelected(new Set());
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Hromadné smazání selhalo."));
     } finally {
       setBulkDeleting(false);
     }
   }
 
   async function convertToPaymentProof(documentId: string, invoiceId: string) {
-    const ok = window.confirm(
-      "Převést tuto fakturu na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci Platby (a případně se nahraje na Drive do složky plateb).",
-    );
+    const ok = await confirm({
+      title: "Převést na doklad o platbě",
+      description:
+        "Převést tuto fakturu na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci Platby (a případně se nahraje na Drive do složky plateb).",
+      confirmLabel: "Převést",
+    });
     if (!ok) {
       return;
     }
@@ -215,7 +234,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         `/api/invoices/${invoiceId}/convert-to-payment-proof`,
         { method: "POST", cache: "no-store" },
       );
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || "Převod selhal.");
         return;
@@ -227,6 +246,8 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Převod selhal."));
     } finally {
       setBusyDoc(null);
     }
@@ -243,13 +264,15 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
         body: JSON.stringify({ reason }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || "Zamítnutí selhalo.");
         return;
       }
       setMessage("Faktura zamítnuta.");
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Zamítnutí selhalo."));
     } finally {
       setBusyDoc(null);
     }
@@ -257,6 +280,7 @@ export function NeedsReviewTable({ rows, canAct }: Props) {
 
   return (
     <div className="space-y-3">
+      {dialog}
       {canAct && selected.size > 0 && selectedDeletable.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Button
