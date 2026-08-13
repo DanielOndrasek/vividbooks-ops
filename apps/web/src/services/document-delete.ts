@@ -1,9 +1,10 @@
 import { writeAuditLog } from "@/lib/audit";
+import { prismaErrorMessage } from "@/lib/api-json";
 import { prisma } from "@/lib/prisma";
 
 export type DeleteDocumentByIdResult =
   | { ok: true }
-  | { ok: false; error: string; code: "not_found" | "approved" };
+  | { ok: false; error: string; code: "not_found" | "approved" | "failed" };
 
 /**
  * Stejná logika jako DELETE /api/documents/[id] (kaskáda z Prisma smaže invoice / paymentProof).
@@ -36,7 +37,15 @@ export async function deleteDocumentById(
 
   const localPath = doc.localFilePath;
 
-  await prisma.document.delete({ where: { id: documentId } });
+  try {
+    await prisma.document.delete({ where: { id: documentId } });
+  } catch (err) {
+    return {
+      ok: false,
+      error: prismaErrorMessage(err, "Smazání dokladu selhalo."),
+      code: "failed",
+    };
+  }
 
   if (localPath) {
     try {
@@ -47,13 +56,17 @@ export async function deleteDocumentById(
     }
   }
 
-  await writeAuditLog({
-    entityType: "Document",
-    entityId: documentId,
-    userId,
-    action: "document_deleted",
-    metadata: { originalFilename: doc.originalFilename },
-  });
+  try {
+    await writeAuditLog({
+      entityType: "Document",
+      entityId: documentId,
+      userId,
+      action: "document_deleted",
+      metadata: { originalFilename: doc.originalFilename },
+    });
+  } catch {
+    /* záznam v DB už je smazaný */
+  }
 
   return { ok: true };
 }

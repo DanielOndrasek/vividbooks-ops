@@ -4,7 +4,9 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { errorMessageFromUnknown, readFetchJson } from "@/lib/api-json";
 
 type Props = {
   invoiceId: string;
@@ -34,6 +36,7 @@ export function InvoiceActions({
   afterActionHref,
 }: Props) {
   const router = useRouter();
+  const { confirm, dialog } = useConfirmDialog();
   const [busy, setBusy] = useState<Busy>(false);
   const [message, setMessage] = useState<string | null>(null);
   const canDelete = documentStatus !== "APPROVED";
@@ -46,7 +49,9 @@ export function InvoiceActions({
         method: "POST",
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string; driveUrl?: string | null };
+      const data = await readFetchJson<{ error?: string; driveUrl?: string | null }>(
+        res,
+      );
       if (!res.ok) {
         setMessage(data.error || "Schválení selhalo.");
         return;
@@ -61,6 +66,8 @@ export function InvoiceActions({
       } else {
         await router.refresh();
       }
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Schválení selhalo."));
     } finally {
       setBusy(false);
     }
@@ -77,7 +84,7 @@ export function InvoiceActions({
         body: JSON.stringify({ reason }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || "Zamítnutí selhalo.");
         return;
@@ -88,15 +95,20 @@ export function InvoiceActions({
       } else {
         await router.refresh();
       }
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Zamítnutí selhalo."));
     } finally {
       setBusy(false);
     }
   }
 
   async function convertToPaymentProof() {
-    const ok = window.confirm(
-      "Převést tuto fakturu na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci Platby (a případně se nahraje na Drive do složky plateb).",
-    );
+    const ok = await confirm({
+      title: "Převést na doklad o platbě",
+      description:
+        "Převést tuto fakturu na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci Platby (a případně se nahraje na Drive do složky plateb).",
+      confirmLabel: "Převést",
+    });
     if (!ok) {
       return;
     }
@@ -107,39 +119,48 @@ export function InvoiceActions({
         `/api/invoices/${invoiceId}/convert-to-payment-proof`,
         { method: "POST", cache: "no-store" },
       );
-      const data = (await res.json()) as { error?: string; ok?: boolean };
+      const data = await readFetchJson<{ error?: string; ok?: boolean }>(res);
       if (!res.ok) {
         setMessage(data.error || "Převod selhal.");
         return;
       }
       setMessage("Doklad převeden na platbu.");
       router.push(afterActionHref ?? "/payment-proofs");
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Převod selhal."));
     } finally {
       setBusy(false);
     }
   }
 
   async function deleteDocument() {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Smazat doklad",
+      description:
         "Trvale smazat tento doklad včetně faktury v databázi? Tuto akci nelze vrátit. Soubory na Google Drive se tím nesmažou.",
-      )
-    ) {
+      confirmLabel: "Smazat",
+      variant: "destructive",
+    });
+    if (!ok) {
       return;
     }
     setBusy("delete");
     setMessage(null);
     try {
       const res = await fetch(`/api/documents/${documentId}`, {
-        method: "DELETE",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete" }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || "Smazání selhalo.");
         return;
       }
       router.push(afterDeleteHref);
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Smazání selhalo."));
     } finally {
       setBusy(false);
     }
@@ -153,6 +174,7 @@ export function InvoiceActions({
 
   return (
     <div className="space-y-4">
+      {dialog}
       {(showApproveReject || canConvertToPayment) && (
         <div
           className="flex flex-wrap gap-2"

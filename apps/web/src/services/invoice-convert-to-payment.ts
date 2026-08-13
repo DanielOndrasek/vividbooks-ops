@@ -1,6 +1,7 @@
 import { DocumentStatus, DocumentType } from "@prisma/client";
 
 import { writeAuditLog } from "@/lib/audit";
+import { prismaErrorMessage } from "@/lib/api-json";
 import { isInvoiceConvertibleToPaymentProof } from "@/lib/invoice-convert-eligibility";
 import { prisma } from "@/lib/prisma";
 import { uploadPaymentReceiptIfConfigured } from "@/services/drive";
@@ -60,48 +61,74 @@ export async function convertInvoiceToPaymentProof(
   }
 
   const documentId = invoice.documentId;
+  const existingProof = await prisma.paymentProof.findUnique({
+    where: { documentId },
+    select: { id: true },
+  });
+  if (existingProof) {
+    return {
+      ok: false,
+      invoiceId,
+      error: "Doklad už má evidenci platby — převod nelze dokončit.",
+      httpStatus: 400,
+    };
+  }
+
   const note = noteFromInvoice(invoice);
   const icoDigits = invoice.supplierICO?.replace(/\D/g, "") || null;
 
-  await prisma.$transaction([
-    prisma.invoice.delete({ where: { id: invoiceId } }),
-    prisma.paymentProof.create({
-      data: {
-        documentId,
-        proofType: "PAYMENT_RECEIPT",
-        note,
-        amount: invoice.amountWithVat,
-        currency: invoice.currency,
-        counterpartyName: invoice.supplierName,
-        counterpartyICO: icoDigits,
-        variableSymbol: invoice.variableSymbol?.replace(/\D/g, "") || null,
-        constantSymbol: invoice.constantSymbol?.replace(/\D/g, "") || null,
-        specificSymbol: invoice.specificSymbol?.replace(/\D/g, "") || null,
-        bankAccountNo: invoice.domesticAccount?.trim() || null,
-      },
-    }),
-    prisma.document.update({
-      where: { id: documentId },
-      data: {
-        documentType: DocumentType.PAYMENT_RECEIPT,
-        status: DocumentStatus.RECEIVED,
-        needsManualReview: false,
-        parseError: null,
-      },
-    }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.invoice.delete({ where: { id: invoiceId } }),
+      prisma.paymentProof.create({
+        data: {
+          documentId,
+          proofType: "PAYMENT_RECEIPT",
+          note,
+          amount: invoice.amountWithVat,
+          currency: invoice.currency,
+          counterpartyName: invoice.supplierName,
+          counterpartyICO: icoDigits,
+          variableSymbol: invoice.variableSymbol?.replace(/\D/g, "") || null,
+          constantSymbol: invoice.constantSymbol?.replace(/\D/g, "") || null,
+          specificSymbol: invoice.specificSymbol?.replace(/\D/g, "") || null,
+          bankAccountNo: invoice.domesticAccount?.trim() || null,
+        },
+      }),
+      prisma.document.update({
+        where: { id: documentId },
+        data: {
+          documentType: DocumentType.PAYMENT_RECEIPT,
+          status: DocumentStatus.RECEIVED,
+          needsManualReview: false,
+          parseError: null,
+        },
+      }),
+    ]);
+  } catch (err) {
+    return {
+      ok: false,
+      invoiceId,
+      error: prismaErrorMessage(err, "Převod na doklad o platbě selhal."),
+      httpStatus: 500,
+    };
+  }
 
-  await writeAuditLog({
-    entityType: "Document",
-    entityId: documentId,
-    userId,
-    action: "converted_invoice_to_payment_proof",
-    metadata: {
-      formerInvoiceId: invoiceId,
-      supplierName: invoice.supplierName,
-      notePreview: note?.slice(0, 200) ?? null,
-    },
-  });
+  try {
+    await writeAuditLog({
+      entityType: "Document",
+      entityId: documentId,
+      userId,
+      action: "converted_invoice_to_payment_proof",
+      metadata: {
+        formerInvoiceId: invoiceId,
+        supplierName: invoice.supplierName,
+        notePreview: note?.slice(0, 200) ?? null,
+      },
+    });
+  } catch {
+    /* převod v DB už prošel */
+  }
 
   await uploadPaymentReceiptIfConfigured(documentId);
 

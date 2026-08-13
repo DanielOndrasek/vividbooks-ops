@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { errorMessageFromUnknown, readFetchJson } from "@/lib/api-json";
 
 export type InvoiceListRowDto = {
   id: string;
@@ -40,6 +42,7 @@ type Busy =
 
 export function InvoicesListTable({ rows, canAct }: Props) {
   const router = useRouter();
+  const { confirm, dialog } = useConfirmDialog();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Busy>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -145,11 +148,11 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         method: "POST",
         cache: "no-store",
       });
-      const data = (await res.json()) as {
+      const data = await readFetchJson<{
         error?: string;
         driveUrl?: string | null;
         ok?: boolean;
-      };
+      }>(res);
       if (!res.ok) {
         setMessage(data.error || "Schválení selhalo.");
         return;
@@ -165,15 +168,20 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Schválení selhalo."));
     } finally {
       setBusy(null);
     }
   }
 
   async function convertOne(invoiceId: string) {
-    const ok = window.confirm(
-      "Převést tuto položku z faktur na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci plateb (a případně se nahraje na Drive do složky plateb).",
-    );
+    const ok = await confirm({
+      title: "Převést na doklad o platbě",
+      description:
+        "Převést tuto položku z faktur na doklad o platbě? Záznam faktury se smaže, dokument bude v sekci plateb (a případně se nahraje na Drive do složky plateb).",
+      confirmLabel: "Převést",
+    });
     if (!ok) {
       return;
     }
@@ -184,7 +192,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         `/api/invoices/${invoiceId}/convert-to-payment-proof`,
         { method: "POST", cache: "no-store" },
       );
-      const data = (await res.json()) as { error?: string; ok?: boolean };
+      const data = await readFetchJson<{ error?: string; ok?: boolean }>(res);
       if (!res.ok) {
         setMessage(data.error || "Převod selhal.");
         return;
@@ -196,27 +204,34 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Převod selhal."));
     } finally {
       setBusy(null);
     }
   }
 
   async function deleteDocumentRow(documentId: string, invoiceId: string) {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Smazat doklad",
+      description:
         "Trvale smazat doklad včetně této faktury v databázi? Soubory na Drive se tím nesmažou.",
-      )
-    ) {
+      confirmLabel: "Smazat",
+      variant: "destructive",
+    });
+    if (!ok) {
       return;
     }
     setBusy({ kind: "delete", documentId });
     setMessage(null);
     try {
       const res = await fetch(`/api/documents/${documentId}`, {
-        method: "DELETE",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete" }),
         cache: "no-store",
       });
-      const data = (await res.json()) as { error?: string };
+      const data = await readFetchJson<{ error?: string }>(res);
       if (!res.ok) {
         setMessage(data.error || "Smazání selhalo.");
         return;
@@ -228,6 +243,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         return next;
       });
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Smazání selhalo."));
     } finally {
       setBusy(null);
     }
@@ -246,12 +263,12 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         body: JSON.stringify({ invoiceIds: selectedApprovable }),
         cache: "no-store",
       });
-      const data = (await res.json()) as {
+      const data = await readFetchJson<{
         error?: string;
         approved?: number;
         failed?: number;
         results?: { invoiceId: string; ok: boolean; error?: string }[];
-      };
+      }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -270,6 +287,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       setMessage(parts.join(" "));
       setSelected(new Set());
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Hromadné schválení selhalo."));
     } finally {
       setBusy(null);
     }
@@ -279,9 +298,11 @@ export function InvoicesListTable({ rows, canAct }: Props) {
     if (selectedConvertible.length === 0) {
       return;
     }
-    const ok = window.confirm(
-      `Převést ${selectedConvertible.length} položek z faktur na doklady o platbě? U každé se smaže řádek faktury a dokument se objeví mezi platbami.`,
-    );
+    const ok = await confirm({
+      title: "Převést na doklady o platbě",
+      description: `Převést ${selectedConvertible.length} položek z faktur na doklady o platbě? U každé se smaže řádek faktury a dokument se objeví mezi platbami.`,
+      confirmLabel: "Převést",
+    });
     if (!ok) {
       return;
     }
@@ -294,12 +315,12 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         body: JSON.stringify({ invoiceIds: selectedConvertible }),
         cache: "no-store",
       });
-      const data = (await res.json()) as {
+      const data = await readFetchJson<{
         error?: string;
         converted?: number;
         failed?: number;
         results?: { invoiceId: string; ok: boolean; error?: string }[];
-      };
+      }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -318,6 +339,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       setMessage(parts.join(" "));
       setSelected(new Set());
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Hromadný převod selhal."));
     } finally {
       setBusy(null);
     }
@@ -328,11 +351,13 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       return;
     }
     const n = selectedDeletableDocumentIds.length;
-    if (
-      !window.confirm(
-        `Trvale smazat ${n} dokladů včetně souvisejících faktur v databázi? Soubory na Drive se tím nesmažou.`,
-      )
-    ) {
+    const ok = await confirm({
+      title: "Smazat doklady",
+      description: `Trvale smazat ${n} dokladů včetně souvisejících faktur v databázi? Soubory na Drive se tím nesmažou.`,
+      confirmLabel: "Smazat",
+      variant: "destructive",
+    });
+    if (!ok) {
       return;
     }
     setBusy({ kind: "bulk-delete" });
@@ -344,12 +369,12 @@ export function InvoicesListTable({ rows, canAct }: Props) {
         body: JSON.stringify({ documentIds: selectedDeletableDocumentIds }),
         cache: "no-store",
       });
-      const data = (await res.json()) as {
+      const data = await readFetchJson<{
         error?: string;
         deleted?: number;
         failed?: number;
         results?: { documentId: string; ok: boolean; error?: string }[];
-      };
+      }>(res);
       if (!res.ok) {
         setMessage(data.error || `Chyba ${res.status}`);
         return;
@@ -368,6 +393,8 @@ export function InvoicesListTable({ rows, canAct }: Props) {
       setMessage(parts.join(" "));
       setSelected(new Set());
       await router.refresh();
+    } catch (err) {
+      setMessage(errorMessageFromUnknown(err, "Hromadné smazání selhalo."));
     } finally {
       setBusy(null);
     }
@@ -377,6 +404,7 @@ export function InvoicesListTable({ rows, canAct }: Props) {
 
   return (
     <div className="space-y-3">
+      {dialog}
       {canAct && selected.size > 0 && (
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           {selectedApprovable.length > 0 && (
