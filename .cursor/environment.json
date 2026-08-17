@@ -1,0 +1,16 @@
+{
+  "name": "Vividbooks Ops",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "web (Next.js)",
+      "command": "cd apps/web && npm run dev"
+    },
+    {
+      "name": "streamlit hub",
+      "command": ".venv/bin/streamlit run Home.py --server.address 0.0.0.0 --server.port 8501 --server.headless true"
+    }
+  ],
+  "ports": [3000, 8501, 5433]
+}
