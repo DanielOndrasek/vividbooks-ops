@@ -45,8 +45,8 @@ const KILLED_JOB_ERROR =
   "Úloha se nedokončila v limitu běhu funkce (Vercel) — nezpracované doklady zůstaly ve frontě.";
 
 /** Uzavře úlohy, které zůstaly viset v „processing“, aby fronta nebyla trvale zamčená. */
-async function failStaleExtractionJobs(): Promise<number> {
-  const res = await prisma.processingJob.updateMany({
+async function failStaleExtractionJobs(): Promise<void> {
+  await prisma.processingJob.updateMany({
     where: {
       type: "ocr_extract",
       status: "processing",
@@ -58,7 +58,6 @@ async function failStaleExtractionJobs(): Promise<number> {
       error: KILLED_JOB_ERROR,
     },
   });
-  return res.count;
 }
 
 function queueCount(): Promise<number> {
@@ -132,7 +131,7 @@ function paymentReceiptNeedsReview(
 }
 
 export type DocumentExtractionJobResult = {
-  jobId: string | null;
+  jobId: string;
   candidates: number;
   processed: number;
   failed: number;
