@@ -6,7 +6,11 @@ import { runEmailPoll } from "@/services/emailPoll";
 /**
  * POST — ruční spuštění (ADMIN nebo APPROVER).
  * GET — pro Vercel Cron / externí scheduler: hlavička Authorization: Bearer CRON_SECRET.
+ *
+ * Stahování příloh roste s počtem zpráv, proto explicitně maximum povolené Hobby plánem.
  */
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 export async function POST() {
   const session = await requireJobRunnerSession();
   if (!session) {

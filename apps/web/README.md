@@ -38,6 +38,15 @@ Z monorepo kořene repozitáře: `npm run dev` (spustí tento workspace).
 
 V `vercel.json` jsou naplánované denní `GET` joby s hlavičkou `Authorization: Bearer CRON_SECRET` (poll-email, process-documents, prune-invoices-db). Hodinová aktualizace skladu běží mimo Vercel — přes GitHub Actions workflow `Sync inventory (hourly)`, který volá stejný typ endpointu (`/api/jobs/sync-inventory`). Pro běh workflow je potřeba mít v GitHub secrets `CRON_SECRET` (volitelně `APP_URL`, jinak se použije `https://vividbooks-ops.vercel.app`).
 
+### AI extrakce a limit běhu funkce
+
+Jeden doklad znamená dva dotazy na Claude (klasifikace + extrakce), tj. přibližně 20 s. Funkce na Vercelu smí běžet nejdéle **300 s** (Hobby plán), takže jeden běh `/api/jobs/process-documents` zpracuje řádově 12 dokladů. Aby se nezpracované doklady neztrácely:
+
+- Úloha si drží časový budget (`AI_JOB_TIME_BUDGET_MS`, výchozí 240 000 ms) a **skončí sama** dřív, než ji platforma zabije. Uloží výsledek a v odpovědi vrátí `remaining` = kolik dokladů zbývá ve frontě.
+- Nedokončené (zabité) úlohy se při dalším spuštění uzavřou jako `failed`, takže fronta nezůstane zamčená. Když už jiný běh probíhá, endpoint vrátí `skippedReason: "already_running"` a nic nezdvojuje.
+- Frontu dobírá GitHub Actions workflow `Process documents (AI)` (`.github/workflows/process-documents.yml`) — každou hodinu volá endpoint dokola, dokud `remaining` není nula. Denní cron na Vercelu zůstává jako záložní spouštěč.
+- Když nejstarší doklad ve frontě čeká přes 24 h, nástěnka na to upozorní.
+
 ## Migrace databáze v produkci
 
 Při **Production** deployi na Vercelu se před sestavením Next.js spustí `prisma migrate deploy` (viz `scripts/vercel-build.mjs`). Pokud by build spadl na chybějícím sloupci (starší nasazení bez migrace), můžeš migraci spustit hned z počítače: `npm run db:migrate:prod` a `DATABASE_URL` z Vercelu (návod v `scripts/migrate-prod.mjs`).

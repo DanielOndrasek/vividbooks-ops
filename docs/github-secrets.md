@@ -85,6 +85,13 @@ Vercel **Hobby** plán umí cron jen 1× denně, proto hodinovou synchronizaci s
 - Cílovou URL lze přepsat repository **variable** `APP_URL` (jinak `https://vividbooks-ops.vercel.app`).
 - Naplánované běhy fungují jen z větve **main**. Ručně: **Actions → „Sync inventory (hourly)" → Run workflow**.
 
+## 4c. Hodinové zpracování dokladů AI
+
+Ze stejného důvodu (denní cron + limit 300 s na běh funkce) řídí dobírání fronty AI extrakce workflow **`Process documents (AI)`** (`.github/workflows/process-documents.yml`). Volá `/api/jobs/process-documents` opakovaně, dokud odpověď nevrátí `remaining: 0`.
+
+- Stejné požadavky jako u synchronizace skladu: repository secret **`CRON_SECRET`** (shodný s Vercelem), volitelně variable `APP_URL`.
+- Bez tohoto workflow zvládne denní cron jen asi 12 dokladů a novější faktury zůstanou nezpracované ve frontě.
+
 ## 5. Streamlit Cloud
 
 V [share.streamlit.io](https://share.streamlit.io) v **Secrets** zkopíruj stejné hodnoty, které potřebuje Streamlit (Pipedrive, `DOKLADY_APP_URL` = URL z Vercelu, …). GitHub Actions je na Streamlit zatím neposílá — zdroj pravdy je seznam výše; po změně aktualizuj obě konzole, dokud nepřidáme druhý workflow.

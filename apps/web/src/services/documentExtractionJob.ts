@@ -25,6 +25,48 @@ function batchLimit(): number {
   return Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 30;
 }
 
+/**
+ * Kolik času má běh na zpracování dokladů. Jeden doklad = dva dotazy na Claude (~15–25 s),
+ * takže celá dávka se do limitu běhu funkce nevejde. Vercel Hobby zabije funkci po 300 s bez
+ * jakéhokoli zápisu — proto skončíme dřív sami, uložíme výsledek a zbytek necháme ve frontě.
+ */
+function timeBudgetMs(): number {
+  const n = Number(process.env.AI_JOB_TIME_BUDGET_MS);
+  if (Number.isFinite(n) && n >= 10_000 && n <= 600_000) {
+    return Math.floor(n);
+  }
+  return 240_000;
+}
+
+/** Po této době od startu je „processing“ úloha zabitá platformou, ne živý běh. */
+const STALE_JOB_AFTER_MS = 10 * 60 * 1000;
+
+const KILLED_JOB_ERROR =
+  "Úloha se nedokončila v limitu běhu funkce (Vercel) — nezpracované doklady zůstaly ve frontě.";
+
+/** Uzavře úlohy, které zůstaly viset v „processing“, aby fronta nebyla trvale zamčená. */
+async function failStaleExtractionJobs(): Promise<number> {
+  const res = await prisma.processingJob.updateMany({
+    where: {
+      type: "ocr_extract",
+      status: "processing",
+      createdAt: { lt: new Date(Date.now() - STALE_JOB_AFTER_MS) },
+    },
+    data: {
+      status: "failed",
+      completedAt: new Date(),
+      error: KILLED_JOB_ERROR,
+    },
+  });
+  return res.count;
+}
+
+function queueCount(): Promise<number> {
+  return prisma.document.count({
+    where: { status: "NEW", documentType: "UNCLASSIFIED" },
+  });
+}
+
 function parseIsoDate(raw: string | null): Date | null {
   if (!raw?.trim()) {
     return null;
@@ -90,13 +132,38 @@ function paymentReceiptNeedsReview(
 }
 
 export type DocumentExtractionJobResult = {
-  jobId: string;
+  jobId: string | null;
   candidates: number;
   processed: number;
   failed: number;
+  /** Doklady, které po tomto běhu zůstaly ve frontě (0 = fronta je prázdná). */
+  remaining: number;
+  /** True = běh skončil kvůli časovému limitu, ne kvůli prázdné frontě. */
+  stoppedEarly: boolean;
+  /** Vyplněné, když už jiný běh probíhá a tento se nespustil. */
+  skippedReason?: "already_running";
 };
 
 export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobResult> {
+  await failStaleExtractionJobs();
+
+  const running = await prisma.processingJob.findFirst({
+    where: { type: "ocr_extract", status: "processing" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (running) {
+    return {
+      jobId: running.id,
+      candidates: 0,
+      processed: 0,
+      failed: 0,
+      remaining: await queueCount(),
+      stoppedEarly: false,
+      skippedReason: "already_running",
+    };
+  }
+
   const limit = batchLimit();
   const docs = await prisma.document.findMany({
     where: {
@@ -108,6 +175,9 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
     include: { email: true },
   });
 
+  const budgetMs = timeBudgetMs();
+  const startedAt = Date.now();
+
   const job = await prisma.processingJob.create({
     data: {
       type: "ocr_extract",
@@ -115,16 +185,27 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
       metadata: {
         documentIds: docs.map((d) => d.id),
         limit,
+        budgetMs,
       },
     },
   });
 
   let processed = 0;
   let failed = 0;
+  let stoppedEarly = false;
+  /** Nejdelší doklad tohoto běhu — podle něj odhadujeme, zda na další ještě máme čas. */
+  let slowestDocMs = 0;
   const threshold = confidenceThreshold();
 
   try {
     for (const doc of docs) {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed + slowestDocMs >= budgetMs) {
+        stoppedEarly = true;
+        break;
+      }
+
+      const docStartedAt = Date.now();
       try {
         await processOneDocument(doc, threshold);
         processed += 1;
@@ -146,7 +227,10 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
           metadata: { error: msg },
         });
       }
+      slowestDocMs = Math.max(slowestDocMs, Date.now() - docStartedAt);
     }
+
+    const remaining = await queueCount();
 
     await prisma.processingJob.update({
       where: { id: job.id },
@@ -157,6 +241,10 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
           candidates: docs.length,
           processed,
           failed,
+          remaining,
+          stoppedEarly,
+          budgetMs,
+          elapsedMs: Date.now() - startedAt,
         },
       },
     });
@@ -166,6 +254,8 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
       candidates: docs.length,
       processed,
       failed,
+      remaining,
+      stoppedEarly,
     };
   } catch (err) {
     await prisma.processingJob.update({
@@ -174,6 +264,12 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
         status: "failed",
         completedAt: new Date(),
         error: err instanceof Error ? err.message : String(err),
+        metadata: {
+          candidates: docs.length,
+          processed,
+          failed,
+          elapsedMs: Date.now() - startedAt,
+        },
       },
     });
     throw err;
