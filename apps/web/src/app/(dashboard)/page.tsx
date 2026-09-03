@@ -216,6 +216,7 @@ export default async function DashboardPage() {
     needsReview,
     paymentStored,
     aiQueue,
+    oldestQueued,
     lastJobs,
     inventoryItems,
   ] = await Promise.all([
@@ -233,6 +234,11 @@ export default async function DashboardPage() {
     prisma.document.count({
       where: { status: "NEW", documentType: "UNCLASSIFIED" },
     }),
+    prisma.document.findFirst({
+      where: { status: "NEW", documentType: "UNCLASSIFIED" },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
     prisma.processingJob.findMany({
       orderBy: { createdAt: "desc" },
       take: 5,
@@ -249,6 +255,13 @@ export default async function DashboardPage() {
       select: { quantity: true, minQuantity: true },
     }),
   ]);
+
+  /** Doklad čeká na AI přes den = automatická úloha neběží nebo padá; bez toho si toho nikdo nevšimne. */
+  const queueStuckHours =
+    oldestQueued != null
+      ? Math.floor((now.getTime() - oldestQueued.createdAt.getTime()) / 3_600_000)
+      : 0;
+  const queueStuck = queueStuckHours >= 24;
 
   const inventoryAttention = inventoryItems.filter(
     (it) =>
@@ -579,11 +592,19 @@ export default async function DashboardPage() {
                 Nastavení
               </Link>
               . Ve frontě na zpracování je{" "}
-              <strong className="text-foreground">{aiQueue}</strong> dokladů — při větším počtu
-              úlohu opakujte, dokud nebude fronta prázdná.
+              <strong className="text-foreground">{aiQueue}</strong> dokladů — jeden běh zvládne
+              přibližně 12 dokladů (limit běhu funkce), zbytek dobere automatická hodinová úloha
+              nebo opakované spuštění.
             </p>
           </div>
         </div>
+        {queueStuck ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+            Nejstarší doklad čeká ve frontě už {queueStuckHours} h. Automatické zpracování
+            pravděpodobně neběží — zkontrolujte poslední úlohy níže a workflow{" "}
+            <em>Process documents (AI)</em> v GitHub Actions, nebo frontu proberte tlačítkem.
+          </p>
+        ) : null}
         {canRunJobs ? (
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <PollEmailButton />

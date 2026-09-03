@@ -23,10 +23,25 @@ export function ProcessDocumentsButton() {
           candidates?: number;
           processed?: number;
           failed?: number;
+          remaining?: number;
+          stoppedEarly?: boolean;
+          skippedReason?: string;
         };
-        setMessage(
-          `Fronta: ${d.candidates ?? 0} kandidátů, zpracováno ${d.processed ?? 0}, chyb ${d.failed ?? 0}.`,
-        );
+        if (d.skippedReason === "already_running") {
+          setMessage(
+            `Zpracování už právě běží (automatická úloha) — ve frontě je ${d.remaining ?? 0} dokladů. Zkuste to za chvíli.`,
+          );
+        } else {
+          const remaining = d.remaining ?? 0;
+          const tail = d.stoppedEarly
+            ? ` Běh skončil na časovém limitu, ve frontě zbývá ${remaining} dokladů — spusťte úlohu znovu.`
+            : remaining > 0
+              ? ` Ve frontě zbývá ${remaining} dokladů.`
+              : " Fronta je prázdná.";
+          setMessage(
+            `Fronta: ${d.candidates ?? 0} kandidátů, zpracováno ${d.processed ?? 0}, chyb ${d.failed ?? 0}.${tail}`,
+          );
+        }
         router.refresh();
       }
     } catch (e) {

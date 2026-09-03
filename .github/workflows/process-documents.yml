@@ -1,0 +1,83 @@
+# Zpracování stažených dokladů umělou inteligencí (klasifikace + extrakce).
+#
+# Proč workflow a ne jen Vercel cron: jeden doklad = dva dotazy na Claude (~20 s) a funkce na Vercelu
+# smí běžet nejdéle 300 s (Hobby plán). Denní cron proto zvládne jen asi 15 dokladů a zbytek zůstane
+# ve frontě — nové faktury se pak do aplikace nedostanou. Endpoint vrací `remaining`, takže ho tady
+# voláme opakovaně, dokud fronta není prázdná.
+#
+# VYŽADUJE repository secret CRON_SECRET se stejnou hodnotou jako CRON_SECRET na Vercelu.
+# Naplánované běhy jdou jen z větve main. Ručně: Actions → tento workflow → Run workflow.
+# Cílovou URL lze přepsat repository variable APP_URL (jinak produkční doména).
+
+name: Process documents (AI)
+
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: process-documents
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Drain AI queue
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://vividbooks-ops.vercel.app' }}
+          MAX_PASSES: "6"
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Chybí repository secret CRON_SECRET (Settings → Secrets and variables → Actions). Musí mít stejnou hodnotu jako CRON_SECRET na Vercelu." >&2
+            exit 1
+          fi
+
+          BASE="${APP_URL:-https://vividbooks-ops.vercel.app}"
+          BASE="${BASE%/}"
+
+          total_processed=0
+          total_failed=0
+
+          for pass in $(seq 1 "${MAX_PASSES}"); do
+            echo "── Průchod ${pass}/${MAX_PASSES}: ${BASE}/api/jobs/process-documents"
+
+            # -m 330 = o něco víc než limit funkce (300 s), ať dostaneme i případné 504 z Vercelu.
+            code=$(curl -sS -m 330 -o /tmp/process.json -w "%{http_code}" -X GET \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${BASE}/api/jobs/process-documents" || echo "000")
+
+            echo "HTTP ${code}"
+            cat /tmp/process.json 2>/dev/null || true
+            echo
+
+            if [ "${code}" != "200" ]; then
+              echo "::error::Zpracování dokladů selhalo (HTTP ${code}). 401 = špatný/chybějící CRON_SECRET (neshoduje se s Vercelem); 500 = chyba v úloze (podrobnosti v odpovědi a v Runtime Logs na Vercelu); 000/504 = běh se nevešel do limitu funkce." >&2
+              exit 1
+            fi
+
+            skipped=$(jq -r '.skippedReason // ""' /tmp/process.json)
+            processed=$(jq -r '.processed // 0' /tmp/process.json)
+            failed=$(jq -r '.failed // 0' /tmp/process.json)
+            remaining=$(jq -r '.remaining // 0' /tmp/process.json)
+
+            if [ "${skipped}" = "already_running" ]; then
+              echo "Jiný běh zpracování už probíhá (Vercel cron nebo ruční spuštění) — končíme, frontu dokončí on."
+              exit 0
+            fi
+
+            total_processed=$((total_processed + processed))
+            total_failed=$((total_failed + failed))
+            echo "Zpracováno ${processed}, chyb ${failed}, ve frontě zbývá ${remaining}."
+
+            if [ "${remaining}" -eq 0 ]; then
+              echo "Fronta je prázdná (celkem zpracováno ${total_processed}, chyb ${total_failed})."
+              exit 0
+            fi
+          done
+
+          echo "::warning::Po ${MAX_PASSES} průchodech ještě zbývají doklady ve frontě (zpracováno ${total_processed}, chyb ${total_failed}). Dokončí je další naplánovaný běh."

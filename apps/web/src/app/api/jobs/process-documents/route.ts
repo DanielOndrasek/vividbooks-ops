@@ -6,7 +6,13 @@ import { runDocumentExtractionJob } from "@/services/documentExtractionJob";
 /**
  * POST — ADMIN nebo APPROVER (session).
  * GET — Bearer CRON_SECRET (např. druhý Vercel cron).
+ *
+ * Extrakce je pomalá (dva dotazy na Claude na doklad), proto explicitně maximum, které Hobby plán
+ * dovolí. Jeden běh frontu obvykle nevyprázdní — `remaining` v odpovědi říká, kolik ještě zbývá,
+ * a workflow „Process documents (AI)“ volá endpoint opakovaně, dokud není nula.
  */
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 export async function POST() {
   const session = await requireJobRunnerSession();
   if (!session) {
