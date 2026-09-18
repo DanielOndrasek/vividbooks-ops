@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
 import { GmailDiagnoseForm } from "@/components/gmail-diagnose-form";
+import { GmailLabelsDiagnostics } from "@/components/gmail-labels-diagnostics";
 import { PipedriveSchemaExplorer } from "@/components/pipedrive-schema-explorer";
 import { PollEmailButton } from "@/components/poll-email-button";
 import { ProcessDocumentsButton } from "@/components/process-documents-button";
@@ -220,6 +221,7 @@ export default async function SettingsPage() {
         {canRunJobs ? (
           <div className="space-y-3">
             <PollEmailButton />
+            <GmailLabelsDiagnostics />
             <GmailDiagnoseForm />
           </div>
         ) : (
