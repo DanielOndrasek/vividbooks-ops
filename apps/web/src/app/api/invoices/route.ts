@@ -14,6 +14,12 @@ const INVOICE_STATUSES: DocumentStatus[] = [
   "NEEDS_REVIEW",
 ];
 
+/** Faktury čekající na akci uživatele — výchozí pohled. */
+const PENDING_STATUSES: DocumentStatus[] = ["PENDING_APPROVAL", "NEEDS_REVIEW"];
+
+/** Hodnota query parametru `status`, kterou klient žádá všechny stavy. */
+const STATUS_ALL = "all";
+
 export async function GET(req: NextRequest) {
   const { session, response } = await requireSession();
   if (response) {
@@ -26,13 +32,25 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.trim();
   const sort = searchParams.get("sort") || "receivedAt";
 
+  const singleStatus =
+    statusParam && INVOICE_STATUSES.includes(statusParam as DocumentStatus)
+      ? (statusParam as DocumentStatus)
+      : null;
+  const showAll = statusParam === STATUS_ALL;
+
+  let statusWhere: Prisma.DocumentWhereInput | undefined;
+  if (singleStatus) {
+    statusWhere = { status: singleStatus };
+  } else if (!showAll) {
+    // Default: jen faktury, které čekají na akci. Bez tohoto by se
+    // ve výchozím pohledu zobrazovaly i historické (schválené) faktury.
+    statusWhere = { status: { in: PENDING_STATUSES } };
+  }
+
   const where: Prisma.InvoiceWhereInput = {
     document: {
       documentType: "INVOICE",
-      ...(statusParam &&
-      INVOICE_STATUSES.includes(statusParam as DocumentStatus)
-        ? { status: statusParam as DocumentStatus }
-        : {}),
+      ...(statusWhere ?? {}),
     },
   };
 
