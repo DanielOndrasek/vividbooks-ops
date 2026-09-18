@@ -244,7 +244,9 @@ export async function runFulfillmentInventorySync(opts?: {
             quantity,
             availableQuantity,
             reservedQuantity,
-            unitPrice,
+            // Jednotkovou cenu (unitPrice) záměrně nepřepisujeme cenou z Fulfillmentu —
+            // ta odpovídá nákupní/skladové ceně, ne prodejní ceně e-shopu. Prodejní ceny
+            // se nastavují ručně (viz seznam_produktu_a_cen.md) a synchronizace je nemá mazat.
             lastSyncedAt: new Date(),
             active: true,
           },
