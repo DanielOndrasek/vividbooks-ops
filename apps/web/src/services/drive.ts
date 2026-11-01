@@ -603,31 +603,44 @@ export async function ensureAccountingBatchFolders(
   };
 }
 
-/** Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM). Když už tam kopie je, nová nevznikne. */
+/**
+ * Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM).
+ * Kopie nese `appProperties.sourceFileId` → opakovaný běh pozná svoji kopii a nevytvoří druhou;
+ * jiný doklad se stejným jménem dostane příponu s kouskem ID. Vrací skutečné jméno kopie.
+ */
 export async function copyDriveFileToFolder(
   fileId: string,
   folderId: string,
   name: string,
-): Promise<string> {
+): Promise<{ id: string; name: string }> {
   const drive = getDrive();
-  const existing = await drive.files.list({
-    q: `'${folderId}' in parents and name = '${escapeQueryName(safeFileName(name))}' and trashed = false`,
-    fields: "files(id)",
-    pageSize: 1,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  });
-  const found = existing.data.files?.[0]?.id;
-  if (found) {
-    return found;
+  const base = safeFileName(name);
+  const candidates = [base, base.replace(/(\.[A-Za-z0-9]+)?$/, (ext) => `_${fileId.slice(-6)}${ext}`)];
+  for (const candidate of candidates) {
+    const existing = await drive.files.list({
+      q: `'${folderId}' in parents and name = '${escapeQueryName(candidate)}' and trashed = false`,
+      fields: "files(id,appProperties)",
+      pageSize: 5,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const files = existing.data.files ?? [];
+    const mine = files.find((f) => f.appProperties?.sourceFileId === fileId);
+    if (mine?.id) {
+      return { id: mine.id, name: candidate };
+    }
+    if (files.length > 0) {
+      continue; // jméno drží jiný doklad → zkusit jméno s příponou
+    }
+    const res = await drive.files.copy({
+      fileId,
+      supportsAllDrives: true,
+      requestBody: { name: candidate, parents: [folderId], appProperties: { sourceFileId: fileId } },
+      fields: "id",
+    });
+    return { id: res.data.id!, name: candidate };
   }
-  const res = await drive.files.copy({
-    fileId,
-    supportsAllDrives: true,
-    requestBody: { name: safeFileName(name), parents: [folderId] },
-    fields: "id",
-  });
-  return res.data.id!;
+  throw new Error(`Jméno „${base}“ je ve složce dávky obsazené jiným dokladem.`);
 }
 
 /** Nahraje textový soubor; když už ve složce soubor stejného jména je, přepíše jeho obsah (opakovatelné). */

@@ -326,9 +326,9 @@ export async function createAccountingBatch(input: {
     });
     if (claimed.count === 0) continue;
     try {
-      await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
+      const copy = await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
       // Jméno kopie = potvrzení, že kopie na Disku opravdu je.
-      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingFileName: name } });
+      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingFileName: copy.name } });
     } catch (e) {
       await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -342,8 +342,8 @@ export async function createAccountingBatch(input: {
     });
     if (claimed.count === 0) continue;
     try {
-      await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
-      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingFileName: name } });
+      const copy = await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
+      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingFileName: copy.name } });
     } catch (e) {
       await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
