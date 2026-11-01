@@ -603,13 +603,24 @@ export async function ensureAccountingBatchFolders(
   };
 }
 
-/** Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM). */
+/** Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM). Když už tam kopie je, nová nevznikne. */
 export async function copyDriveFileToFolder(
   fileId: string,
   folderId: string,
   name: string,
 ): Promise<string> {
   const drive = getDrive();
+  const existing = await drive.files.list({
+    q: `'${folderId}' in parents and name = '${escapeQueryName(safeFileName(name))}' and trashed = false`,
+    fields: "files(id)",
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const found = existing.data.files?.[0]?.id;
+  if (found) {
+    return found;
+  }
   const res = await drive.files.copy({
     fileId,
     supportsAllDrives: true,

@@ -21,7 +21,8 @@ export async function findExistingByDedupKey(
   const docs = await prisma.document.findMany({
     where: {
       dedupKey,
-      status: { not: DocumentStatus.DUPLICATE },
+      // Zamítnutý originál nesmí schovat opravenou verzi faktury.
+      status: { notIn: [DocumentStatus.DUPLICATE, DocumentStatus.REJECTED] },
       ...(excludeDocumentId ? { id: { not: excludeDocumentId } } : {}),
     },
     select: { id: true, documentType: true, status: true, createdAt: true },
