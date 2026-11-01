@@ -169,6 +169,8 @@ export type EligibleAttachment = {
   attachmentId: string;
   filename: string;
   mimeType: string;
+  /** Velikost v bajtech podle Gmailu (pro odfiltrování log z podpisů). */
+  size: number | null;
 };
 
 export type GmailAttachmentPartSummary = {
@@ -239,6 +241,7 @@ export function listEligibleAttachments(
       attachmentId,
       filename,
       mimeType: normMime,
+      size: typeof part.body?.size === "number" ? part.body.size : null,
     });
   });
   return out;

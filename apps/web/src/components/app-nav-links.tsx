@@ -11,6 +11,7 @@ const links = [
   { href: "/payment-proofs", label: "Platby" },
   { href: "/needs-review", label: "Ke kontrole" },
   { href: "/documents", label: "Doklady" },
+  { href: "/duplicates", label: "Duplicity" },
   { href: "/commission", label: "Provize" },
   { href: "/sales-controlling", label: "Sales controlling" },
   { href: "/inventory", label: "Sklad" },

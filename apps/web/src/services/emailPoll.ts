@@ -7,6 +7,10 @@ import { createHash } from "node:crypto";
 import type { gmail_v1 } from "googleapis";
 
 import { writeAuditLog } from "@/lib/audit";
+import {
+  isNoiseAttachment,
+  stripeInvoicesSupersededByReceipts,
+} from "@/lib/document-dedupe";
 import { gmailOnlyUnread } from "@/lib/gmail-config";
 import { prisma } from "@/lib/prisma";
 import {
@@ -26,6 +30,8 @@ export type EmailPollResult = {
   messagesScanned: number;
   documentsCreated: number;
   skippedDuplicates: number;
+  /** Loga z podpisů, obchodní podmínky, Stripe faktury s účtenkou v témže e-mailu. */
+  skippedFiltered: number;
   perMessage: Array<{
     gmailMessageId: string;
     subject: string;
@@ -35,6 +41,7 @@ export type EmailPollResult = {
     attachmentFilenames: string[];
     documentsCreated: number;
     skippedDuplicates: number;
+    skippedFiltered: string[];
   }>;
   /** Gmail search query (diagnostics). */
   queryUsed: string;
@@ -75,6 +82,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
 
   let documentsCreated = 0;
   let skippedDuplicates = 0;
+  let skippedFiltered = 0;
   const perMessage: Array<{
     gmailMessageId: string;
     subject: string;
@@ -84,6 +92,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
     attachmentFilenames: string[];
     documentsCreated: number;
     skippedDuplicates: number;
+    skippedFiltered: string[];
   }> = [];
 
   try {
@@ -115,8 +124,16 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
 
       let msgDocs = 0;
       let msgSkipped = 0;
+      const msgFiltered: string[] = [];
+      const supersededInvoices = stripeInvoicesSupersededByReceipts(attachments);
 
       for (const att of attachments) {
+        if (isNoiseAttachment(att) || supersededInvoices.has(att.filename)) {
+          skippedFiltered += 1;
+          msgFiltered.push(att.filename);
+          continue;
+        }
+
         const existingPair = await prisma.document.findUnique({
           where: {
             emailId_gmailAttachmentId: {
@@ -134,9 +151,15 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         const bytes = await downloadAttachment(gmail, messageId, att.attachmentId);
         const hash = sha256(bytes);
 
-        const existingHash = await prisma.document.findUnique({
-          where: { contentHash: hash },
-        });
+        const existingHash =
+          (await prisma.document.findUnique({
+            where: { contentHash: hash },
+            select: { id: true },
+          })) ??
+          // Stopa přežije promazání DB i smazání vlastních vydaných faktur.
+          (await prisma.documentFingerprint
+            .findUnique({ where: { contentHash: hash }, select: { documentId: true } })
+            .then((f) => (f ? { id: f.documentId ?? "(promazáno)" } : null)));
         if (existingHash) {
           skippedDuplicates += 1;
           msgSkipped += 1;
@@ -179,7 +202,20 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
         attachmentFilenames: attachments.map((a) => `${a.filename} (${a.mimeType})`),
         documentsCreated: msgDocs,
         skippedDuplicates: msgSkipped,
+        skippedFiltered: msgFiltered,
       });
+      if (msgFiltered.length > 0) {
+        await writeAuditLog({
+          entityType: "Email",
+          entityId: email.id,
+          action: "skipped_filtered_attachments",
+          metadata: {
+            filenames: msgFiltered,
+            senderEmail: meta.senderEmail,
+            subject: subject.slice(0, 300),
+          },
+        });
+      }
 
       await prisma.email.update({
         where: { id: email.id },
@@ -203,6 +239,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
           messagesScanned: messageIds.length,
           documentsCreated,
           skippedDuplicates,
+          skippedFiltered,
           perMessage,
         },
       },
@@ -213,6 +250,7 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       messagesScanned: messageIds.length,
       documentsCreated,
       skippedDuplicates,
+      skippedFiltered,
       perMessage,
       queryUsed: buildUnprocessedQuery(),
       onlyUnread: gmailOnlyUnread(),

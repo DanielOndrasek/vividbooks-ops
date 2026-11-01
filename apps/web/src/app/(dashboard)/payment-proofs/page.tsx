@@ -13,6 +13,7 @@ export default async function PaymentProofsPage() {
   const canAct = canRunIntegrationJobs(session?.user?.role);
 
   const rows = await prisma.paymentProof.findMany({
+    where: { document: { status: { not: "DUPLICATE" } } },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {

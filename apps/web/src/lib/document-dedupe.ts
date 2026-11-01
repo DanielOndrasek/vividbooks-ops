@@ -1,0 +1,277 @@
+/**
+ * Čistá logika pro třídění a hledání duplicit dokladů (bez Prisma / sítě → testovatelné).
+ */
+
+/** IČO Vividbooks s.r.o. — doklady s tímto dodavatelem jsou vydané faktury, do evidence nepatří. */
+export const OWN_COMPANY_ICOS = ["08637351"];
+
+export function ownCompanyIcos(): string[] {
+  const extra = (process.env.OWN_COMPANY_ICOS ?? "")
+    .split(/[,\s]+/)
+    .map((x) => x.replace(/\D/g, ""))
+    .filter(Boolean);
+  return Array.from(new Set([...OWN_COMPANY_ICOS, ...extra]));
+}
+
+/** Dodavatel na dokladu je naše firma = vydaná faktura (přeposlaná z iDokladu apod.). */
+export function isOwnCompanySupplier(
+  supplierICO: string | null | undefined,
+  supplierDIC: string | null | undefined,
+  icos: string[] = ownCompanyIcos(),
+): boolean {
+  const ico = supplierICO?.replace(/\D/g, "") ?? "";
+  const dic = supplierDIC?.replace(/\D/g, "") ?? "";
+  return icos.some((own) => own === ico || (dic.length > 0 && own === dic));
+}
+
+const LEGAL_SUFFIXES = [
+  "spol s r o",
+  "s r o",
+  "sro",
+  "a s",
+  "as",
+  "inc",
+  "ltd",
+  "limited",
+  "llc",
+  "pbc",
+  "pte",
+  "gmbh",
+  "ou",
+  "oü",
+  "corp",
+  "corporation",
+  "co",
+  "plc",
+  "bv",
+  "sa",
+];
+
+/** Jméno dodavatele bez právní formy, závorek a interpunkce: „Anysphere, Inc. (Cursor)“ → „anysphere“. */
+export function normalizeSupplierName(name: string | null | undefined): string {
+  let s = (name ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  let changed = true;
+  while (changed && s) {
+    changed = false;
+    for (const suf of LEGAL_SUFFIXES) {
+      if (s === suf) {
+        break;
+      }
+      if (s.endsWith(` ${suf}`)) {
+        s = s.slice(0, -(suf.length + 1)).trim();
+        changed = true;
+      }
+    }
+  }
+  return s.replace(/\s+/g, "");
+}
+
+export function normalizeDocumentNumber(num: string | null | undefined): string {
+  return (num ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export type DedupInput = {
+  supplierName: string | null | undefined;
+  supplierICO?: string | null;
+  documentNumber: string | null | undefined;
+  amount: number | null | undefined;
+  currency?: string | null;
+  /** STANDARD_INVOICE, CREDIT_NOTE, REFUND… */
+  documentKind?: string | null;
+  originalFilename?: string | null;
+};
+
+/** Dobropis / refund se nesmí slít s fakturou nebo účtenkou stejného čísla. */
+export function isCreditLike(input: Pick<DedupInput, "amount" | "documentKind" | "originalFilename">): boolean {
+  const kind = (input.documentKind ?? "").toUpperCase();
+  const file = (input.originalFilename ?? "").toLowerCase();
+  return (
+    (input.amount != null && input.amount < 0) ||
+    /CREDIT|REFUND|DOBROPIS|STORNO/.test(kind) ||
+    /creditnote|credit-note|refund|dobropis/.test(file)
+  );
+}
+
+/**
+ * Logický klíč dokladu: dodavatel | číslo | druh | částka měna.
+ * Bez čísla dokladu vrací null (nelze spolehlivě porovnat — zbývá jen shoda souboru).
+ * Dodavatele bereme podle jména (IČO u zahraničních chybí a AI ho občas doplní z DIČ),
+ * částka v klíči chrání různé doklady se stejným číslem (zálohová vs. konečné vyúčtování).
+ */
+export function buildDedupKey(input: DedupInput): string | null {
+  const num = normalizeDocumentNumber(input.documentNumber);
+  if (num.length < 3) {
+    return null;
+  }
+  const ico = input.supplierICO?.replace(/\D/g, "") ?? "";
+  const sup = normalizeSupplierName(input.supplierName) || (ico ? `ico${ico}` : "");
+  if (!sup) {
+    return null;
+  }
+  const cls = isCreditLike(input) ? "CN" : "DOC";
+  const amt =
+    input.amount != null && Number.isFinite(input.amount)
+      ? Math.abs(input.amount).toFixed(2)
+      : "?";
+  const cur = (input.currency ?? "").trim().toUpperCase() || "?";
+  return `${sup}|${num}|${cls}|${amt}${cur}`;
+}
+
+/**
+ * Silná nápověda z názvu souboru: Stripe účtenky, refundy, dobropisy, GitHub receipt.
+ * Vrací PAYMENT_RECEIPT jen tam, kde je to jednoznačné; jinak null (rozhodne AI).
+ */
+export function classificationHintFromFilename(
+  filename: string,
+): "PAYMENT_RECEIPT" | null {
+  const f = filename.toLowerCase();
+  if (
+    /(^|[-_\s])receipt[-_\s]/.test(f) ||
+    /(^|[-_\s])receipt\.(pdf|png|jpe?g)$/.test(f) ||
+    /(^|[-_\s])refund[-_\s]/.test(f) ||
+    /(^|[-_\s])creditnote[-_\s]/.test(f) ||
+    /uctenka|účtenka|stvrzenka/.test(f)
+  ) {
+    return "PAYMENT_RECEIPT";
+  }
+  return null;
+}
+
+export type AttachmentLike = {
+  filename: string;
+  mimeType: string;
+  size?: number | null;
+};
+
+const NOISE_NAME = [
+  /^image\d{3}\.(png|jpe?g|gif)$/i,
+  /^outlook-[a-z0-9]+\.(png|jpe?g)$/i,
+  /obchodn[ií][-_ ]?podm[ií]nky/i,
+  /(^|[-_ ])vop([-_ .]|$)/i,
+  /terms[-_ ]?(of|and)[-_ ]?(service|conditions)/i,
+  /^logo/i,
+  /podpis|signature/i,
+];
+
+/** Logo z podpisu, obchodní podmínky apod. — nestahovat, nedávat AI. */
+export function isNoiseAttachment(att: AttachmentLike): boolean {
+  if (NOISE_NAME.some((re) => re.test(att.filename))) {
+    return true;
+  }
+  const isImage = att.mimeType.startsWith("image/");
+  if (isImage && att.size != null && att.size > 0 && att.size < 25_000) {
+    return true;
+  }
+  return false;
+}
+
+/** „1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf“ → { prefix: „1a0b2efa11601e6c-“, kind: „invoice“ } */
+function stripeFileKind(filename: string): { prefix: string; kind: "invoice" | "receipt" } | null {
+  const m = filename.match(/^(.*?)(invoice|receipt)[-_][^/]*\.pdf$/i);
+  if (!m) {
+    return null;
+  }
+  return { prefix: m[1]!.toLowerCase(), kind: m[2]!.toLowerCase() as "invoice" | "receipt" };
+}
+
+/**
+ * Stripe posílá v jednom e-mailu Invoice-…pdf i Receipt-…pdf ke stejné platbě. Účetní stačí účtenka.
+ * Vrací názvy příloh, které se mají přeskočit (faktury, ke kterým je v e-mailu účtenka se stejným prefixem).
+ */
+export function stripeInvoicesSupersededByReceipts(attachments: AttachmentLike[]): Set<string> {
+  const receiptPrefixes = new Set<string>();
+  for (const a of attachments) {
+    const k = stripeFileKind(a.filename);
+    if (k?.kind === "receipt") {
+      receiptPrefixes.add(k.prefix);
+    }
+  }
+  const skip = new Set<string>();
+  if (receiptPrefixes.size === 0) {
+    return skip;
+  }
+  for (const a of attachments) {
+    const k = stripeFileKind(a.filename);
+    if (k?.kind === "invoice" && receiptPrefixes.has(k.prefix)) {
+      skip.add(a.filename);
+    }
+  }
+  return skip;
+}
+
+export type ExistingDocForDedup = {
+  documentId: string | null;
+  documentType: "INVOICE" | "PAYMENT_RECEIPT" | string;
+  /** Stav dokumentu; null = dokument už v DB není (zbyla jen stopa). */
+  status: string | null;
+};
+
+export type DedupDecision =
+  /** Nový doklad je duplicita existujícího. */
+  | { action: "new_is_duplicate"; keepDocumentId: string | null }
+  /** Nový doklad (účtenka) nahradí dosud neschválenou fakturu. */
+  | { action: "replace_existing"; replaceDocumentId: string }
+  | { action: "keep_new" };
+
+const REPLACEABLE_INVOICE_STATUSES = new Set(["PENDING_APPROVAL", "NEEDS_REVIEW", "REJECTED", "UPLOAD_FAILED"]);
+
+/**
+ * Pravidla:
+ * - účtenka má přednost před fakturou, dokud faktura není schválená (pak už odešla účetní);
+ * - jinak platí první doklad, další se stejným klíčem jsou duplicity.
+ */
+export function decideDuplicate(
+  newType: "INVOICE" | "PAYMENT_RECEIPT",
+  existing: ExistingDocForDedup | null,
+): DedupDecision {
+  if (!existing) {
+    return { action: "keep_new" };
+  }
+  if (
+    newType === "PAYMENT_RECEIPT" &&
+    existing.documentType === "INVOICE" &&
+    existing.documentId &&
+    existing.status != null &&
+    REPLACEABLE_INVOICE_STATUSES.has(existing.status)
+  ) {
+    return { action: "replace_existing", replaceDocumentId: existing.documentId };
+  }
+  return { action: "new_is_duplicate", keepDocumentId: existing.documentId };
+}
+
+/** Číslo dokladu z poznámky platby (starší záznamy bez sloupce documentNumber). */
+export function documentNumberFromPaymentNote(
+  note: string | null | undefined,
+  originalFilename?: string | null,
+): string | null {
+  const n = note ?? "";
+  const m = n.match(/č\.\s*(\S+)/);
+  if (m) {
+    return m[1]!;
+  }
+  const parts = n.split("|").map((p) => p.trim());
+  for (const p of parts.slice(1)) {
+    // Starší poznámky: dodavatel | účet | číslo | zpráva — číslo účtu (…/0100, IBAN) přeskočit.
+    const isAccount = /\/\d{4}$/.test(p) || /^[A-Z]{2}\d{2}[A-Z0-9]{10,}$/.test(p);
+    if (!isAccount && /^[A-Za-z0-9][A-Za-z0-9_\-/]{3,}$/.test(p) && /\d/.test(p)) {
+      return p;
+    }
+  }
+  const f = (originalFilename ?? "").match(/(?:invoice|creditnote|doklad)[-_ ]?([A-Z0-9]+(?:-[A-Z0-9]+)*)\.(pdf)$/i);
+  return f ? f[1]! : null;
+}
+
+/** Částka z poznámky „… · 80.26 USD“. */
+export function amountFromPaymentNote(note: string | null | undefined): { amount: number; currency: string } | null {
+  const m = (note ?? "").match(/·\s*(-?\d+(?:[.,]\d+)?)\s*([A-Z]{3})\s*$/);
+  if (!m) {
+    return null;
+  }
+  return { amount: Number(m[1]!.replace(",", ".")), currency: m[2]! };
+}

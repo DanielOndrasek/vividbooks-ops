@@ -15,6 +15,15 @@ export default auth((req) => {
   ) {
     return NextResponse.next();
   }
+  // Agent (Hermes) — token ověří znovu samotná route (porovnání v konstantním čase + uživatel).
+  const agentToken = process.env.AGENT_API_TOKEN;
+  if (
+    agentToken &&
+    path.startsWith("/api/agent/") &&
+    req.headers.get("authorization") === `Bearer ${agentToken}`
+  ) {
+    return NextResponse.next();
+  }
   if (
     path.startsWith("/login") ||
     path.startsWith("/api/auth") ||

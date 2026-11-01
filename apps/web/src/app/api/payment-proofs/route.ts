@@ -10,6 +10,7 @@ export async function GET() {
   }
 
   const rows = await prisma.paymentProof.findMany({
+    where: { document: { status: { not: "DUPLICATE" } } },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {

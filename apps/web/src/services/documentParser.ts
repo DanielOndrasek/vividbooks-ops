@@ -113,12 +113,14 @@ async function completeWithVision(
   return text;
 }
 
-const CLASSIFY_PROMPT = `Analyzuj přiložený dokument (faktura, zálohová faktura, doklad o přijaté platbě, potvrzení platby apod.).
+const CLASSIFY_PROMPT = `Analyzuj přiložený doklad. Jsme firma Vividbooks s.r.o. (IČO 08637351) a tyto doklady jsou naše NÁKUPY / VÝDAJE.
 
-Rozhodni:
-- INVOICE = faktura nebo jiný doklad k úhradě dodavateli (má splatnost, částka k zaplacení).
-- PAYMENT_RECEIPT = doklad o tom, že nám někdo zaplatil (příchozí platba, potvrzení z banky, uznání závazku přijaté platby).
-- UNKNOWN = nelze spolehlivě zařadit (smlouva, obecný sken, jiný typ).
+Rozhodni, do které evidence doklad patří:
+- INVOICE = faktura, kterou teprve musíme ZAPLATIT převodem: má datum splatnosti, číslo účtu / IBAN dodavatele, často variabilní symbol, a NENÍ na ní uvedeno, že je zaplacená. Typicky české faktury od dodavatelů, freelancerů, Fulfillmentu, PPL, O2.
+- PAYMENT_RECEIPT = doklad o platbě, kterou jsme UŽ ZAPLATILI (kartou, online, předplatné): receipt, účtenka, „Paid“, „Amount paid“, „Payment method: Visa/Mastercard“, „Uhrazeno kartou“, „Zaplaceno“, nulová částka k úhradě, Stripe receipt, faktura e-shopu zaplacená předem (Alza), měsíční předplatné SaaS (Anthropic, Vercel, GitHub, Supabase, Zapier, Pipedrive, Sentry, Fly.io, Twilio…) s uvedenou platbou kartou. Patří sem i dobropis / refund / credit note k platbě kartou.
+- UNKNOWN = nejde o účetní doklad (smlouva, obchodní podmínky, objednávka bez ceny, logo, upomínka bez dokladu, jiný typ).
+
+Když je na dokumentu „Invoice“, ale zároveň je jasně vidět, že je zaplacená (Paid, Amount paid, platba kartou), zvol PAYMENT_RECEIPT.
 
 Vrať POUZE platný JSON bez markdownu:
 {"type":"INVOICE"|"PAYMENT_RECEIPT"|"UNKNOWN","confidence":0.0-1.0}
@@ -184,7 +186,7 @@ export async function extractInvoiceData(
 ): Promise<ExtractionResult> {
   const hint =
     docKind === "PAYMENT_RECEIPT"
-      ? "Jde o doklad o přijaté platbě — plátce/protistrana: supplierName, supplierICO; částku platby do amountWithVat; paymentDate; VS/KS/SS; domesticAccountNumber a domesticBankCode z protiúčtu; bankMessage z textu platby. invoiceLines nech null."
+      ? "Jde o doklad o platbě, kterou jsme už zaplatili (účtenka / receipt / zaplacená faktura) — supplierName a supplierICO/DIČ = obchodník, kterému jsme platili; invoiceNumber = číslo faktury nebo dokladu, ke kterému se platba vztahuje (u Stripe účtenky číslo faktury „Invoice number“, ne číslo účtenky; když chybí, číslo účtenky); částku platby do amountWithVat (u dobropisu / refundu záporně); paymentDate; documentKind = RECEIPT, nebo CREDIT_NOTE / REFUND; VS/KS/SS pokud jsou; bankMessage z textu platby. invoiceLines nech null."
       : "Jde o fakturu k úhradě — vyplň dodavatele, DIČ, adresu pokud je v tisku, symboly, účet (iban/domesticAccount), řádky faktury pokud jsou uvedeny.";
   const text = await completeWithVision(
     fileBuffer,

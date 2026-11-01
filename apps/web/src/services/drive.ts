@@ -533,3 +533,122 @@ export async function uploadApprovedInvoiceToDrive(
     return { ok: false, error: msg };
   }
 }
+
+/* ───────────────────────── Týdenní dávka pro účetní ───────────────────────── */
+
+/**
+ * Kořen pro dávky účetní: GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID, jinak složka „Pro účetní“
+ * vedle kořene faktur (stejný sdílený disk).
+ */
+async function accountingRootFolderId(drive: ReturnType<typeof getDrive>): Promise<string> {
+  const explicit = process.env.GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const invRoot = invoicesRootFolderId();
+  const meta = await drive.files.get({
+    fileId: invRoot,
+    fields: "parents,driveId",
+    supportsAllDrives: true,
+  });
+  const parent = meta.data.parents?.[0] ?? meta.data.driveId;
+  if (!parent) {
+    throw new Error("Nelze určit nadřazenou složku pro „Pro účetní“ — nastavte GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID.");
+  }
+  const existing = await findChildFolder(drive, parent, "Pro účetní");
+  return existing ?? (await createFolder(drive, parent, "Pro účetní"));
+}
+
+async function folderWebViewLink(
+  drive: ReturnType<typeof getDrive>,
+  folderId: string,
+): Promise<string | null> {
+  const meta = await drive.files.get({
+    fileId: folderId,
+    fields: "webViewLink",
+    supportsAllDrives: true,
+  });
+  return meta.data.webViewLink ?? null;
+}
+
+export type AccountingFolders = {
+  batchFolderId: string;
+  invoicesFolderId: string;
+  invoicesFolderUrl: string | null;
+  paymentsFolderId: string;
+  paymentsFolderUrl: string | null;
+};
+
+/** Pro účetní / RRRR / <label> / {Faktury, Doklady k platbě} */
+export async function ensureAccountingBatchFolders(
+  label: string,
+  anchor: Date,
+): Promise<AccountingFolders> {
+  const drive = getDrive();
+  const root = await accountingRootFolderId(drive);
+  const { year } = ymFromDate(anchor);
+  const yId = (await findChildFolder(drive, root, year)) ?? (await createFolder(drive, root, year));
+  const bId = (await findChildFolder(drive, yId, label)) ?? (await createFolder(drive, yId, label));
+  const invId =
+    (await findChildFolder(drive, bId, "Faktury")) ?? (await createFolder(drive, bId, "Faktury"));
+  const payId =
+    (await findChildFolder(drive, bId, "Doklady k platbě")) ??
+    (await createFolder(drive, bId, "Doklady k platbě"));
+  return {
+    batchFolderId: bId,
+    invoicesFolderId: invId,
+    invoicesFolderUrl: await folderWebViewLink(drive, invId),
+    paymentsFolderId: payId,
+    paymentsFolderUrl: await folderWebViewLink(drive, payId),
+  };
+}
+
+/** Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM). */
+export async function copyDriveFileToFolder(
+  fileId: string,
+  folderId: string,
+  name: string,
+): Promise<string> {
+  const drive = getDrive();
+  const res = await drive.files.copy({
+    fileId,
+    supportsAllDrives: true,
+    requestBody: { name: safeFileName(name), parents: [folderId] },
+    fields: "id",
+  });
+  return res.data.id!;
+}
+
+export async function uploadTextFileToFolder(
+  folderId: string,
+  name: string,
+  content: string,
+  mimeType: string,
+): Promise<void> {
+  const drive = getDrive();
+  await uploadBufferToFolder(drive, folderId, name, Buffer.from(content, "utf8"), mimeType);
+}
+
+/** Přístup ke složce (čtení) pro účetní — bez notifikačního e-mailu, odkaz pošle agent. */
+export async function shareFolderWithEmails(
+  folderId: string,
+  emails: string[],
+): Promise<{ shared: string[]; errors: string[] }> {
+  const drive = getDrive();
+  const shared: string[] = [];
+  const errors: string[] = [];
+  for (const email of emails) {
+    try {
+      await drive.permissions.create({
+        fileId: folderId,
+        supportsAllDrives: true,
+        sendNotificationEmail: false,
+        requestBody: { type: "user", role: "reader", emailAddress: email },
+      });
+      shared.push(email);
+    } catch (e) {
+      errors.push(`${email}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { shared, errors };
+}

@@ -5,7 +5,13 @@
 import { DocumentStatus, DocumentType, Prisma } from "@prisma/client";
 
 import { writeAuditLog } from "@/lib/audit";
-import type { ExtractionResult } from "@/lib/documentSchemas";
+import {
+  buildDedupKey,
+  classificationHintFromFilename,
+  decideDuplicate,
+  isOwnCompanySupplier,
+} from "@/lib/document-dedupe";
+import type { ClassificationResult, ExtractionResult } from "@/lib/documentSchemas";
 import { loadDocumentFileBuffer } from "@/lib/document-file-buffer";
 import { prisma } from "@/lib/prisma";
 import {
@@ -13,6 +19,11 @@ import {
   extractInvoiceData,
   resolveMediaType,
 } from "@/services/documentParser";
+import {
+  findExistingByDedupKey,
+  markDocumentDuplicate,
+  recordFingerprint,
+} from "@/services/document-dedupe-store";
 import { uploadPaymentReceiptIfConfigured } from "@/services/drive";
 
 function confidenceThreshold(): number {
@@ -281,6 +292,7 @@ async function processOneDocument(
     originalFilename: string;
     localFilePath: string | null;
     gmailAttachmentId: string;
+    contentHash: string | null;
     email: { gmailMessageId: string } | null;
   },
   threshold: number,
@@ -289,7 +301,11 @@ async function processOneDocument(
   const mediaType = resolveMediaType(doc.originalFilename);
   const id = doc.id;
 
-  const classification = await classifyDocument(buffer, mediaType);
+  // Receipt-/Refund-/CreditNote- soubory jsou jednoznačné → bez dotazu na AI (a bez chyby „faktura“).
+  const filenameHint = classificationHintFromFilename(doc.originalFilename);
+  const classification: ClassificationResult = filenameHint
+    ? { type: filenameHint, confidence: 0.95 }
+    : await classifyDocument(buffer, mediaType);
 
   if (classification.type === "UNKNOWN") {
     const rawBundle = JSON.stringify({ classification, threshold });
@@ -318,6 +334,39 @@ async function processOneDocument(
     classification.type,
   );
 
+  // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří vůbec — smazat, nechat jen stopu.
+  if (isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC)) {
+    await recordFingerprint({
+      contentHash: doc.contentHash,
+      dedupKey: null,
+      documentType: classification.type,
+      outcome: "own_issued",
+      documentId: null,
+      supplierName: extraction.supplierName,
+      documentNumber: extraction.invoiceNumber,
+    });
+    await prisma.document.delete({ where: { id } });
+    if (doc.localFilePath) {
+      try {
+        const fs = await import("node:fs/promises");
+        await fs.unlink(doc.localFilePath);
+      } catch {
+        /* temp */
+      }
+    }
+    await writeAuditLog({
+      entityType: "Document",
+      entityId: id,
+      action: "own_issued_invoice_dropped",
+      metadata: {
+        originalFilename: doc.originalFilename,
+        invoiceNumber: extraction.invoiceNumber,
+        amountWithVat: extraction.amountWithVat,
+      },
+    });
+    return;
+  }
+
   const combinedConfidence = Math.min(
     classification.confidence,
     extraction.confidence,
@@ -329,15 +378,30 @@ async function processOneDocument(
     threshold,
   });
 
+  const currency = (extraction.currency?.trim() || "CZK").slice(0, 8);
+  const dedupKey = buildDedupKey({
+    supplierName: extraction.supplierName,
+    supplierICO: extraction.supplierICO,
+    documentNumber: extraction.invoiceNumber,
+    amount: extraction.amountWithVat,
+    currency,
+    documentKind: extraction.documentKind,
+    originalFilename: doc.originalFilename,
+  });
+  const existing = dedupKey ? await findExistingByDedupKey(dedupKey, id) : null;
+  const decision = decideDuplicate(classification.type, existing);
+  const isDuplicate = decision.action === "new_is_duplicate";
+  const duplicateOf = isDuplicate ? decision.keepDocumentId : null;
+
   if (classification.type === "PAYMENT_RECEIPT") {
     const note = [
       extraction.supplierName,
-      extraction.bankAccount,
-      extraction.invoiceNumber,
+      extraction.invoiceNumber ? `č. ${extraction.invoiceNumber}` : null,
+      extraction.amountWithVat != null ? `${extraction.amountWithVat} ${currency}` : null,
       extraction.bankMessage,
     ]
       .filter(Boolean)
-      .join(" | ")
+      .join(" · ")
       .slice(0, 4000);
 
     const payNeedsReview = paymentReceiptNeedsReview(
@@ -353,9 +417,10 @@ async function processOneDocument(
         note: note || null,
         paymentDate: parseIsoDate(extraction.paymentDate),
         amount: numToDecimalString(extraction.amountWithVat),
-        currency: (extraction.currency?.trim() || "CZK").slice(0, 8),
+        currency,
         counterpartyName: extraction.supplierName,
         counterpartyICO: digitsOnly(extraction.supplierICO),
+        documentNumber: extraction.invoiceNumber?.trim().slice(0, 120) || null,
         variableSymbol: digitsOnly(extraction.variableSymbol),
         constantSymbol: digitsOnly(extraction.constantSymbol),
         specificSymbol: digitsOnly(extraction.specificSymbol),
@@ -369,25 +434,51 @@ async function processOneDocument(
       where: { id },
       data: {
         documentType: DocumentType.PAYMENT_RECEIPT,
-        status: DocumentStatus.RECEIVED,
+        status: isDuplicate ? DocumentStatus.DUPLICATE : DocumentStatus.RECEIVED,
         classificationConfidence: classification.confidence,
         aiRawResponse: rawBundle.slice(0, 65000),
-        needsManualReview: payNeedsReview,
+        needsManualReview: isDuplicate ? false : payNeedsReview,
+        dedupKey,
+        duplicateOfDocumentId: duplicateOf,
       },
+    });
+
+    await recordFingerprint({
+      contentHash: doc.contentHash,
+      dedupKey,
+      documentType: DocumentType.PAYMENT_RECEIPT,
+      outcome: isDuplicate ? "duplicate" : "kept",
+      documentId: id,
+      supplierName: extraction.supplierName,
+      documentNumber: extraction.invoiceNumber,
     });
 
     await writeAuditLog({
       entityType: "Document",
       entityId: id,
-      action: "data_extracted",
+      action: isDuplicate ? "extracted_duplicate" : "data_extracted",
       metadata: {
         type: "PAYMENT_RECEIPT",
         combinedConfidence,
         needsManualReview: payNeedsReview,
+        dedupKey,
+        duplicateOfDocumentId: duplicateOf,
+        classifiedByFilename: Boolean(filenameHint),
       },
     });
 
-    await uploadPaymentReceiptIfConfigured(id);
+    if (decision.action === "replace_existing") {
+      // Účtenka k faktuře, která ještě nebyla schválená → faktura je nadbytečná.
+      await markDocumentDuplicate({
+        documentId: decision.replaceDocumentId,
+        keepDocumentId: id,
+        reason: "receipt_supersedes_invoice",
+      });
+    }
+
+    if (!isDuplicate) {
+      await uploadPaymentReceiptIfConfigured(id);
+    }
     return;
   }
 
@@ -399,9 +490,11 @@ async function processOneDocument(
     missingCritical ||
     missingLines ||
     czkNoVs;
-  const nextStatus = needsManualReview
-    ? DocumentStatus.NEEDS_REVIEW
-    : DocumentStatus.PENDING_APPROVAL;
+  const nextStatus = isDuplicate
+    ? DocumentStatus.DUPLICATE
+    : needsManualReview
+      ? DocumentStatus.NEEDS_REVIEW
+      : DocumentStatus.PENDING_APPROVAL;
 
   const addr = extraction.supplierAddress;
 
@@ -420,7 +513,7 @@ async function processOneDocument(
       amountWithoutVat: numToDecimalString(extraction.amountWithoutVat),
       vatAmount: numToDecimalString(extraction.vatAmount),
       vatRate: numToDecimalString(extraction.vatRate),
-      currency: (extraction.currency?.trim() || "CZK").slice(0, 8),
+      currency,
       issueDate: parseIsoDate(extraction.issueDate),
       dueDate: parseIsoDate(extraction.dueDate),
       variableSymbol: digitsOnly(extraction.variableSymbol),
@@ -451,14 +544,26 @@ async function processOneDocument(
       status: nextStatus,
       classificationConfidence: classification.confidence,
       aiRawResponse: rawBundle.slice(0, 65000),
-      needsManualReview,
+      needsManualReview: isDuplicate ? false : needsManualReview,
+      dedupKey,
+      duplicateOfDocumentId: duplicateOf,
     },
+  });
+
+  await recordFingerprint({
+    contentHash: doc.contentHash,
+    dedupKey,
+    documentType: DocumentType.INVOICE,
+    outcome: isDuplicate ? "duplicate" : "kept",
+    documentId: id,
+    supplierName: extraction.supplierName,
+    documentNumber: extraction.invoiceNumber,
   });
 
   await writeAuditLog({
     entityType: "Document",
     entityId: id,
-    action: "data_extracted",
+    action: isDuplicate ? "extracted_duplicate" : "data_extracted",
     metadata: {
       type: "INVOICE",
       combinedConfidence,
@@ -466,6 +571,8 @@ async function processOneDocument(
       missingCritical,
       missingStructuredLines: missingLines,
       czkMissingVariableSymbol: czkNoVs,
+      dedupKey,
+      duplicateOfDocumentId: duplicateOf,
     },
   });
 }

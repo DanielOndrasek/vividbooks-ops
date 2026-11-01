@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       ...(statusParam &&
       INVOICE_STATUSES.includes(statusParam as DocumentStatus)
         ? { status: statusParam as DocumentStatus }
-        : {}),
+        : { status: { not: "DUPLICATE" as const } }),
     },
   };
 
