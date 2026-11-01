@@ -27,8 +27,11 @@ export async function findExistingByDedupKey(
     select: { id: true, documentType: true, status: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
+  const storedReceipt = docs.find(
+    (d) => d.documentType === DocumentType.PAYMENT_RECEIPT && d.status === DocumentStatus.STORED,
+  );
   const receipt = docs.find((d) => d.documentType === DocumentType.PAYMENT_RECEIPT);
-  const pick = receipt ?? docs[0];
+  const pick = storedReceipt ?? receipt ?? docs[0];
   if (pick) {
     return { documentId: pick.id, documentType: pick.documentType, status: pick.status };
   }

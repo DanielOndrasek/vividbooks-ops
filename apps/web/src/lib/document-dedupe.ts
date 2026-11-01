@@ -226,9 +226,8 @@ export function decideDuplicate(
   ) {
     return { action: "replace_existing", replaceDocumentId: existing.documentId };
   }
-  // Fakturu neskrývat za účtenku, která ještě není bezpečně uložená (STORED) — obě nechat, rozhodne člověk.
+  // Nic neskrývat za účtenku, která ještě není bezpečně uložená (STORED) — obě nechat, rozhodne člověk.
   if (
-    newType === "INVOICE" &&
     existing.documentType === "PAYMENT_RECEIPT" &&
     existing.status != null &&
     existing.status !== "STORED"

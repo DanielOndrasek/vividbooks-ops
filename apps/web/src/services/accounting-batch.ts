@@ -475,17 +475,16 @@ export async function markAccountingBatchSent(batchId: string, sentTo: string, u
   if (!current) {
     throw new Error("Dávka nenalezena.");
   }
-  // Neúplnou nebo nenasdílenou dávku nejde označit jako odeslanou.
-  const problems: string[] = [];
-  if (current.shareError) problems.push(`sdílení/přehled: ${current.shareError}`);
-  if (!current.sharedWith) problems.push("složka není nasdílená účetní");
-  const rest = await collectBatchCandidates(current.periodFrom, current.periodTo);
-  const [bi, bp] = await batchItems(batchId);
-  const unconfirmed = bi.filter((i) => !i.accountingFileName).length + bp.filter((p) => !p.accountingFileName).length;
-  const missing = rest.invoices.length + rest.payments.length + unconfirmed;
-  if (missing > 0) problems.push(`${missing} dokladů z období v dávce chybí`);
-  if (problems.length > 0) {
-    throw new Error(`Dávka není připravená: ${problems.join("; ")}. Zopakujte POST /api/agent/accounting-batch nebo …/share.`);
+  // Před označením vždy znovu: přehled CSV z aktuálního obsahu, sdílení, úplnost.
+  const fin = await finalizeAccountingBatch(batchId, userId);
+  if (!fin.readyToSend) {
+    const problems = [
+      ...fin.shareErrors.map((e) => `sdílení: ${e}`),
+      ...(fin.overviewError ? [`přehled: ${fin.overviewError}`] : []),
+      ...(fin.sharedWith.length === 0 ? ["složka není nasdílená účetní"] : []),
+      ...(fin.missingItems !== 0 ? [`chybí doklady: ${fin.missingItems === -1 ? "nelze ověřit" : fin.missingItems}`] : []),
+    ];
+    throw new Error(`Dávka není připravená: ${problems.join("; ")}. Zopakujte POST /api/agent/accounting-batch.`);
   }
   const batch = await prisma.accountingBatch.update({
     where: { id: batchId },

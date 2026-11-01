@@ -105,6 +105,10 @@ test("rozhodnutí o duplicitě", () => {
     { action: "keep_new" },
   );
   assert.deepEqual(
+    decideDuplicate("PAYMENT_RECEIPT", { documentId: "d3", documentType: "PAYMENT_RECEIPT", status: "RECEIVED" }),
+    { action: "keep_new" },
+  );
+  assert.deepEqual(
     decideDuplicate("INVOICE", { documentId: null, documentType: "INVOICE", status: null }),
     { action: "new_is_duplicate", keepDocumentId: null },
   );
