@@ -471,17 +471,21 @@ async function processOneDocument(
       },
     });
 
-    if (decision.action === "replace_existing") {
-      // Účtenka k faktuře, která ještě nebyla schválená → faktura je nadbytečná.
-      await markDocumentDuplicate({
-        documentId: decision.replaceDocumentId,
-        keepDocumentId: id,
-        reason: "receipt_supersedes_invoice",
-      });
-    }
-
     if (!isDuplicate) {
       await uploadPaymentReceiptIfConfigured(id);
+    }
+
+    if (decision.action === "replace_existing") {
+      // Účtenka k neschválené faktuře → faktura je nadbytečná. Ale až když je účtenka bezpečně uložená,
+      // jinak by účetní nedostala ani jedno.
+      const stored = await prisma.document.findUnique({ where: { id }, select: { status: true } });
+      if (stored?.status === DocumentStatus.STORED) {
+        await markDocumentDuplicate({
+          documentId: decision.replaceDocumentId,
+          keepDocumentId: id,
+          reason: "receipt_supersedes_invoice",
+        });
+      }
     }
     return;
   }

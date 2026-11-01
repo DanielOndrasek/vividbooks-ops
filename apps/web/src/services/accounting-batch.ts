@@ -202,12 +202,15 @@ type PaymentForBatch = {
   document: { originalFilename: string };
 };
 
-/** Deterministická jména souborů v dávce (stejná při kopírování i v přehledu, i po opakování). */
-function fileNamesFor<T extends { id: string }>(rows: T[], nameOf: (r: T) => string): Map<string, string> {
-  const sorted = [...rows].sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.id.localeCompare(b.id));
-  const used = new Set<string>();
+/** Jména pro nové kopie: nekolidují s už použitými jmény v dávce (ta se nemění). */
+function fileNamesFor<T extends { id: string }>(
+  rows: T[],
+  nameOf: (r: T) => string,
+  taken: Iterable<string>,
+): Map<string, string> {
+  const used = new Set<string>([...taken].map((n) => n.toLowerCase()));
   const out = new Map<string, string>();
-  for (const r of sorted) {
+  for (const r of rows) {
     const base = nameOf(r);
     let n = base;
     let i = 2;
@@ -279,8 +282,16 @@ export async function createAccountingBatch(input: {
   }
 
   const [doneInv, donePay] = await batchItems(batch.id);
-  const invNames = fileNamesFor<InvoiceForBatch>([...doneInv, ...c.invoices], invName);
-  const payNames = fileNamesFor<PaymentForBatch>([...donePay, ...c.payments], payName);
+  const invNames = fileNamesFor<InvoiceForBatch>(
+    c.invoices,
+    invName,
+    doneInv.map((i) => i.accountingFileName ?? ""),
+  );
+  const payNames = fileNamesFor<PaymentForBatch>(
+    c.payments,
+    payName,
+    donePay.map((p) => p.accountingFileName ?? ""),
+  );
 
   const copyErrors: string[] = [];
   for (const inv of c.invoices) {
@@ -288,7 +299,10 @@ export async function createAccountingBatch(input: {
     try {
       await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
       // Přiřadit hned — když běh spadne, opakování tenhle doklad znovu nekopíruje.
-      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: batch.id } });
+      await prisma.invoice.update({
+        where: { id: inv.id },
+        data: { accountingBatchId: batch.id, accountingFileName: name },
+      });
     } catch (e) {
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -297,7 +311,10 @@ export async function createAccountingBatch(input: {
     const name = payNames.get(p.id)!;
     try {
       await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
-      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: batch.id } });
+      await prisma.paymentProof.update({
+        where: { id: p.id },
+        data: { accountingBatchId: batch.id, accountingFileName: name },
+      });
     } catch (e) {
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -330,8 +347,6 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
   }
   const folders = await ensureAccountingBatchFolders(batch.label, batch.createdAt);
   const [invs, pays] = await batchItems(batchId);
-  const invNames = fileNamesFor<InvoiceForBatch>(invs, invName);
-  const payNames = fileNamesFor<PaymentForBatch>(pays, payName);
 
   let overviewError: string | null = null;
   try {
@@ -343,7 +358,7 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
           ["Soubor", "Dodavatel", "IČO", "Číslo faktury", "VS", "Vystaveno", "Splatnost", "Bez DPH", "S DPH", "Měna"],
           invs
             .map((i) => [
-              invNames.get(i.id),
+              i.accountingFileName ?? invName(i),
               i.supplierName,
               i.supplierICO,
               i.invoiceNumber,
@@ -367,7 +382,7 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
           ["Soubor", "Obchodník", "Číslo dokladu", "Datum platby", "Částka", "Měna"],
           pays
             .map((p) => [
-              payNames.get(p.id),
+              p.accountingFileName ?? payName(p),
               p.counterpartyName,
               p.documentNumber,
               p.paymentDate?.toISOString().slice(0, 10),

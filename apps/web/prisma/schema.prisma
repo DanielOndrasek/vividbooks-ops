@@ -247,6 +247,8 @@ model Invoice {
 
   /// Týdenní dávka pro účetní, ve které faktura odešla.
   accountingBatchId String?
+  /// Jméno kopie ve složce dávky (pevné — přehled CSV na něj odkazuje).
+  accountingFileName String?
   accountingBatch   AccountingBatch? @relation(fields: [accountingBatchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
@@ -288,8 +290,9 @@ model PaymentProof {
   pohodaExternalId      String?
   pohodaExportLastError String?            @db.Text
 
-  accountingBatchId String?
-  accountingBatch   AccountingBatch? @relation(fields: [accountingBatchId], references: [id], onDelete: SetNull)
+  accountingBatchId  String?
+  accountingFileName String?
+  accountingBatch    AccountingBatch? @relation(fields: [accountingBatchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

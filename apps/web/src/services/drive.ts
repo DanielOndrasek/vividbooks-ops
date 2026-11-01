@@ -656,7 +656,25 @@ export async function shareFolderWithEmails(
   const drive = getDrive();
   const shared: string[] = [];
   const errors: string[] = [];
+  // Opakované dokončení dávky: kdo už přístup má, se počítá jako úspěch.
+  const already = new Set<string>();
+  try {
+    const perms = await drive.permissions.list({
+      fileId: folderId,
+      supportsAllDrives: true,
+      fields: "permissions(emailAddress)",
+    });
+    for (const p of perms.data.permissions ?? []) {
+      if (p.emailAddress) already.add(p.emailAddress.toLowerCase());
+    }
+  } catch {
+    /* seznam není nutný — zkusíme rovnou vytvořit */
+  }
   for (const email of emails) {
+    if (already.has(email.toLowerCase())) {
+      shared.push(email);
+      continue;
+    }
     try {
       await drive.permissions.create({
         fileId: folderId,

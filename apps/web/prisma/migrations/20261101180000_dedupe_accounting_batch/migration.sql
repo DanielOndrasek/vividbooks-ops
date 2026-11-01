@@ -30,7 +30,9 @@ CREATE TABLE "AccountingBatch" (
 CREATE INDEX "AccountingBatch_createdAt_idx" ON "AccountingBatch"("createdAt");
 
 ALTER TABLE "Invoice" ADD COLUMN "accountingBatchId" TEXT;
+ALTER TABLE "Invoice" ADD COLUMN "accountingFileName" TEXT;
 ALTER TABLE "PaymentProof" ADD COLUMN "accountingBatchId" TEXT;
+ALTER TABLE "PaymentProof" ADD COLUMN "accountingFileName" TEXT;
 CREATE INDEX "Invoice_accountingBatchId_idx" ON "Invoice"("accountingBatchId");
 CREATE INDEX "PaymentProof_accountingBatchId_idx" ON "PaymentProof"("accountingBatchId");
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_accountingBatchId_fkey" FOREIGN KEY ("accountingBatchId") REFERENCES "AccountingBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
