@@ -255,7 +255,7 @@ export async function createAccountingBatch(input: {
   if (accountantEmails().length === 0) {
     throw new Error("Chybí ACCOUNTANT_EMAILS — dávku by nikdo z účetní neotevřel.");
   }
-  const c = await collectBatchCandidates(input.since, now);
+  let c = await collectBatchCandidates(input.since, now);
   const baseLabel = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
   // Navázat na neodeslanou dávku dne; po odeslání má další dávka téhož dne vlastní složku „(2)“.
   const sameDay = await prisma.accountingBatch.findMany({
@@ -290,6 +290,20 @@ export async function createAccountingBatch(input: {
     batch = await prisma.accountingBatch.update({ where: { id: batch.id }, data: { periodTo: c.periodTo } });
   }
 
+  // Zabrané, ale nepotvrzené kopie z přerušeného běhu uvolnit — znovu se vyberou a zkopírují níž.
+  const released =
+    (await prisma.invoice.updateMany({
+      where: { accountingBatchId: batch.id, accountingFileName: null },
+      data: { accountingBatchId: null },
+    })).count +
+    (await prisma.paymentProof.updateMany({
+      where: { accountingBatchId: batch.id, accountingFileName: null },
+      data: { accountingBatchId: null },
+    })).count;
+  if (released > 0) {
+    c = await collectBatchCandidates(input.since, now);
+  }
+
   const [doneInv, donePay] = await batchItems(batch.id);
   const invNames = fileNamesFor<InvoiceForBatch>(
     c.invoices,
@@ -308,11 +322,13 @@ export async function createAccountingBatch(input: {
     // Nejdřív doklad atomicky „zabrat“ (souběžný běh ho už nezkopíruje), při chybě kopie uvolnit.
     const claimed = await prisma.invoice.updateMany({
       where: { id: inv.id, accountingBatchId: null },
-      data: { accountingBatchId: batch.id, accountingFileName: name },
+      data: { accountingBatchId: batch.id, accountingFileName: null },
     });
     if (claimed.count === 0) continue;
     try {
       await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
+      // Jméno kopie = potvrzení, že kopie na Disku opravdu je.
+      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingFileName: name } });
     } catch (e) {
       await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -322,11 +338,12 @@ export async function createAccountingBatch(input: {
     const name = payNames.get(p.id)!;
     const claimed = await prisma.paymentProof.updateMany({
       where: { id: p.id, accountingBatchId: null },
-      data: { accountingBatchId: batch.id, accountingFileName: name },
+      data: { accountingBatchId: batch.id, accountingFileName: null },
     });
     if (claimed.count === 0) continue;
     try {
       await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
+      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingFileName: name } });
     } catch (e) {
       await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -370,6 +387,7 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
         toCsv(
           ["Soubor", "Dodavatel", "IČO", "Číslo faktury", "VS", "Vystaveno", "Splatnost", "Bez DPH", "S DPH", "Měna"],
           invs
+            .filter((i) => i.accountingFileName)
             .map((i) => [
               i.accountingFileName ?? invName(i),
               i.supplierName,
@@ -394,6 +412,7 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
         toCsv(
           ["Soubor", "Obchodník", "Číslo dokladu", "Datum platby", "Částka", "Měna"],
           pays
+            .filter((p) => p.accountingFileName)
             .map((p) => [
               p.accountingFileName ?? payName(p),
               p.counterpartyName,
@@ -418,7 +437,9 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
   let missingItems = -1;
   try {
     const rest = await collectBatchCandidates(batch.periodFrom, batch.periodTo);
-    missingItems = rest.invoices.length + rest.payments.length;
+    const unconfirmed =
+      invs.filter((i) => !i.accountingFileName).length + pays.filter((p) => !p.accountingFileName).length;
+    missingItems = rest.invoices.length + rest.payments.length + unconfirmed;
   } catch {
     missingItems = -1;
   }
@@ -459,7 +480,9 @@ export async function markAccountingBatchSent(batchId: string, sentTo: string, u
   if (current.shareError) problems.push(`sdílení/přehled: ${current.shareError}`);
   if (!current.sharedWith) problems.push("složka není nasdílená účetní");
   const rest = await collectBatchCandidates(current.periodFrom, current.periodTo);
-  const missing = rest.invoices.length + rest.payments.length;
+  const [bi, bp] = await batchItems(batchId);
+  const unconfirmed = bi.filter((i) => !i.accountingFileName).length + bp.filter((p) => !p.accountingFileName).length;
+  const missing = rest.invoices.length + rest.payments.length + unconfirmed;
   if (missing > 0) problems.push(`${missing} dokladů z období v dávce chybí`);
   if (problems.length > 0) {
     throw new Error(`Dávka není připravená: ${problems.join("; ")}. Zopakujte POST /api/agent/accounting-batch nebo …/share.`);

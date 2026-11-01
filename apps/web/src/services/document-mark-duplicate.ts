@@ -1,6 +1,10 @@
 import { DocumentStatus } from "@prisma/client";
 
-import { normalizeSupplierName } from "@/lib/document-dedupe";
+import {
+  documentNumberFromPaymentNote,
+  normalizeDocumentNumber,
+  normalizeSupplierName,
+} from "@/lib/document-dedupe";
 import { prisma } from "@/lib/prisma";
 import { markDocumentDuplicate } from "@/services/document-dedupe-store";
 
@@ -53,10 +57,12 @@ export async function markDuplicateFromUser(input: {
       ]);
       const sameSupplier = a.supplier !== "" && a.supplier === b.supplier;
       const sameAmount = a.amount != null && b.amount != null && Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) < 0.01;
-      if (!sameSupplier || !sameAmount) {
+      const sameCurrency = a.currency !== "" && a.currency === b.currency;
+      const sameNumber = a.number !== "" && a.number === b.number;
+      if (!sameSupplier || !sameAmount || !sameCurrency || !sameNumber) {
         return {
           ok: false,
-          error: "Uložená platba se neshoduje s ponechaným dokladem (dodavatel nebo částka) — nelze skrýt.",
+          error: "Uložená platba se neshoduje s ponechaným dokladem (dodavatel, číslo, částka, měna) — nelze skrýt.",
           httpStatus: 400,
         };
       }
@@ -78,15 +84,26 @@ export async function markDuplicateFromUser(input: {
   return { ok: true };
 }
 
-async function docMoney(documentId: string): Promise<{ supplier: string; amount: number | null }> {
+async function docMoney(
+  documentId: string,
+): Promise<{ supplier: string; amount: number | null; currency: string; number: string }> {
   const d = await prisma.document.findUnique({
     where: { id: documentId },
     select: {
-      invoice: { select: { supplierName: true, amountWithVat: true } },
-      paymentProof: { select: { counterpartyName: true, amount: true } },
+      invoice: { select: { supplierName: true, amountWithVat: true, currency: true, invoiceNumber: true } },
+      paymentProof: {
+        select: { counterpartyName: true, amount: true, currency: true, documentNumber: true, note: true },
+      },
+      originalFilename: true,
     },
   });
   const supplier = normalizeSupplierName(d?.invoice?.supplierName ?? d?.paymentProof?.counterpartyName ?? "");
   const raw = d?.invoice?.amountWithVat ?? d?.paymentProof?.amount ?? null;
-  return { supplier, amount: raw != null ? Number(raw) : null };
+  const number = normalizeDocumentNumber(
+    d?.invoice?.invoiceNumber ??
+      d?.paymentProof?.documentNumber ??
+      documentNumberFromPaymentNote(d?.paymentProof?.note, d?.originalFilename),
+  );
+  const currency = (d?.invoice?.currency ?? d?.paymentProof?.currency ?? "").toUpperCase();
+  return { supplier, amount: raw != null ? Number(raw) : null, currency, number };
 }
