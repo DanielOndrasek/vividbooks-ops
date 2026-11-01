@@ -67,7 +67,7 @@ test("nápověda z názvu souboru", () => {
   assert.equal(classificationHintFromFilename("1a0b2efa11601e6c-Receipt-2477-3087.pdf"), "PAYMENT_RECEIPT");
   assert.equal(classificationHintFromFilename("github-vividbooks-receipt-2026-10-14.pdf"), "PAYMENT_RECEIPT");
   assert.equal(classificationHintFromFilename("Refund-3569-2324.pdf"), "PAYMENT_RECEIPT");
-  assert.equal(classificationHintFromFilename("CreditNote-FVQ8II9E-0028-CN-01.pdf"), "PAYMENT_RECEIPT");
+  assert.equal(classificationHintFromFilename("CreditNote-FVQ8II9E-0028-CN-01.pdf"), null);
   assert.equal(classificationHintFromFilename("Invoice-XVGMOKDB-0006.pdf"), null);
   assert.equal(classificationHintFromFilename("Vydaná faktura - 20260779.pdf"), null);
 });
@@ -80,6 +80,8 @@ test("šum v přílohách", () => {
   assert.equal(isNoiseAttachment({ filename: "VOP_RR_06082026.pdf", mimeType: "application/pdf", size: 90000 }), true);
   assert.equal(isNoiseAttachment({ filename: "uctenka.jpg", mimeType: "image/jpeg", size: 400000 }), false);
   assert.equal(isNoiseAttachment({ filename: "FA.PDF", mimeType: "application/pdf", size: 50000 }), false);
+  assert.equal(isNoiseAttachment({ filename: "logo.png", mimeType: "image/png", size: 8000 }), true);
+  assert.equal(isNoiseAttachment({ filename: "logo-faktura.pdf", mimeType: "application/pdf", size: 200000 }), false);
   // malá fotka účtenky není šum
   assert.equal(isNoiseAttachment({ filename: "IMG_2041.jpg", mimeType: "image/jpeg", size: 18000 }), false);
 });

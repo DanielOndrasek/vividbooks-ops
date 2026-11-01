@@ -138,7 +138,7 @@ export function buildDedupKey(input: DedupInput): string | null {
 }
 
 /**
- * Silná nápověda z názvu souboru: Stripe účtenky, refundy, dobropisy, GitHub receipt.
+ * Silná nápověda z názvu souboru: Stripe účtenky, refundy, GitHub receipt (dobropis rozhodne AI podle obsahu).
  * Vrací PAYMENT_RECEIPT jen tam, kde je to jednoznačné; jinak null (rozhodne AI).
  */
 export function classificationHintFromFilename(
@@ -149,7 +149,6 @@ export function classificationHintFromFilename(
     /(^|[-_\s])receipt[-_\s]/.test(f) ||
     /(^|[-_\s])receipt\.(pdf|png|jpe?g)$/.test(f) ||
     /(^|[-_\s])refund[-_\s]/.test(f) ||
-    /(^|[-_\s])creditnote[-_\s]/.test(f) ||
     /uctenka|účtenka|stvrzenka/.test(f)
   ) {
     return "PAYMENT_RECEIPT";
@@ -164,13 +163,16 @@ export type AttachmentLike = {
 };
 
 /** Vložené obrázky z Outlooku/podpisů — šum jen když jsou malé (fotka účtenky bývá stovky kB). */
-const INLINE_IMAGE_NAME = [/^image\d{3}\.(png|jpe?g|gif)$/i, /^outlook-[a-z0-9]+\.(png|jpe?g)$/i];
+const INLINE_IMAGE_NAME = [
+  /^image\d{3}\.(png|jpe?g|gif)$/i,
+  /^outlook-[a-z0-9]+\.(png|jpe?g)$/i,
+  /^logo/i,
+  /podpis|signature/i,
+];
 const NOISE_NAME = [
   /obchodn[ií][-_ ]?podm[ií]nky/i,
   /(^|[-_ ])vop([-_ .]|$)/i,
   /terms[-_ ]?(of|and)[-_ ]?(service|conditions)/i,
-  /^logo/i,
-  /podpis|signature/i,
 ];
 
 /**
