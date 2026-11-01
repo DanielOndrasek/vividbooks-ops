@@ -436,6 +436,20 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
 }
 
 export async function markAccountingBatchSent(batchId: string, sentTo: string, userId: string | null) {
+  const current = await prisma.accountingBatch.findUnique({ where: { id: batchId } });
+  if (!current) {
+    throw new Error("Dávka nenalezena.");
+  }
+  // Neúplnou nebo nenasdílenou dávku nejde označit jako odeslanou.
+  const problems: string[] = [];
+  if (current.shareError) problems.push(`sdílení/přehled: ${current.shareError}`);
+  if (!current.sharedWith) problems.push("složka není nasdílená účetní");
+  const rest = await collectBatchCandidates(current.periodFrom, current.periodTo);
+  const missing = rest.invoices.length + rest.payments.length;
+  if (missing > 0) problems.push(`${missing} dokladů z období v dávce chybí`);
+  if (problems.length > 0) {
+    throw new Error(`Dávka není připravená: ${problems.join("; ")}. Zopakujte POST /api/agent/accounting-batch nebo …/share.`);
+  }
   const batch = await prisma.accountingBatch.update({
     where: { id: batchId },
     data: { sentAt: new Date(), sentTo: sentTo.slice(0, 500) },

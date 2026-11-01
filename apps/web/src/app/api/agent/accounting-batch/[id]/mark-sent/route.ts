@@ -18,7 +18,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const b = await markAccountingBatchSent(id, parsed.data.sentTo, actor!.userId);
     return NextResponse.json({ ok: true, batchId: b.id, sentAt: b.sentAt });
-  } catch {
-    return NextResponse.json({ error: "Dávka nenalezena." }, { status: 404 });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 409 });
   }
 }

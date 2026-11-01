@@ -58,6 +58,9 @@ test("vydané faktury Vividbooks", () => {
   assert.equal(isOwnCompanySupplier("08637351", null), true);
   assert.equal(isOwnCompanySupplier(null, "CZ08637351"), true);
   assert.equal(isOwnCompanySupplier("05923336", "CZ05923336"), false); // symfio — taky „Vydaná faktura“ z iDokladu
+  assert.equal(isOwnCompanySupplier("08637351", "CZ08637351"), true);
+  // rozpor IČO × DIČ → nemazat (AI mohla vzít DIČ odběratele)
+  assert.equal(isOwnCompanySupplier("05923336", "CZ08637351"), false);
 });
 
 test("nápověda z názvu souboru", () => {

@@ -22,7 +22,13 @@ export function isOwnCompanySupplier(
   const ico = supplierICO?.replace(/\D/g, "") ?? "";
   // DIČ „CZ08637351“ → „08637351“ (předpona státu pryč).
   const dic = supplierDIC?.replace(/\D/g, "") ?? "";
-  return icos.some((own) => own === ico || (dic.length > 0 && own === dic));
+  const icoOwn = ico.length > 0 && icos.includes(ico);
+  const dicOwn = dic.length > 0 && icos.includes(dic);
+  // Rozpor (IČO cizí, DIČ naše nebo naopak) = spíš chyba čtení (odběratel místo dodavatele) → nemazat.
+  if (ico.length > 0 && dic.length > 0) {
+    return icoOwn && dicOwn;
+  }
+  return icoOwn || dicOwn;
 }
 
 const LEGAL_SUFFIXES = [
