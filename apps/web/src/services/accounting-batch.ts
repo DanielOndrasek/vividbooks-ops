@@ -271,8 +271,11 @@ export async function createAccountingBatch(input: {
   const folders = await ensureAccountingBatchFolders(label, now);
   if (!batch) {
     const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
-    batch = await prisma.accountingBatch.create({
-      data: {
+    // label je unikátní → souběžné vytvoření téže dávky spadne a druhý běh na ni naváže.
+    batch = await prisma.accountingBatch.upsert({
+      where: { label },
+      update: {},
+      create: {
         label,
         periodFrom: lastBatch?.periodTo ?? c.periodFrom,
         periodTo: c.periodTo,
@@ -302,26 +305,30 @@ export async function createAccountingBatch(input: {
   const copyErrors: string[] = [];
   for (const inv of c.invoices) {
     const name = invNames.get(inv.id)!;
+    // Nejdřív doklad atomicky „zabrat“ (souběžný běh ho už nezkopíruje), při chybě kopie uvolnit.
+    const claimed = await prisma.invoice.updateMany({
+      where: { id: inv.id, accountingBatchId: null },
+      data: { accountingBatchId: batch.id, accountingFileName: name },
+    });
+    if (claimed.count === 0) continue;
     try {
       await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
-      // Přiřadit hned — když běh spadne, opakování tenhle doklad znovu nekopíruje.
-      await prisma.invoice.update({
-        where: { id: inv.id },
-        data: { accountingBatchId: batch.id, accountingFileName: name },
-      });
     } catch (e) {
+      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   for (const p of c.payments) {
     const name = payNames.get(p.id)!;
+    const claimed = await prisma.paymentProof.updateMany({
+      where: { id: p.id, accountingBatchId: null },
+      data: { accountingBatchId: batch.id, accountingFileName: name },
+    });
+    if (claimed.count === 0) continue;
     try {
       await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
-      await prisma.paymentProof.update({
-        where: { id: p.id },
-        data: { accountingBatchId: batch.id, accountingFileName: name },
-      });
     } catch (e) {
+      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: null, accountingFileName: null } });
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }

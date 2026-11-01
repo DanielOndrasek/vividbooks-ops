@@ -323,7 +323,7 @@ model DocumentFingerprint {
 /// Týdenní dávka dokladů pro účetní (složky na Google Disku + odkazy do e-mailu).
 model AccountingBatch {
   id                  String    @id @default(cuid())
-  label               String
+  label               String    @unique
   periodFrom          DateTime
   periodTo            DateTime
   invoicesFolderId    String?

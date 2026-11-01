@@ -28,6 +28,7 @@ CREATE TABLE "AccountingBatch" (
     CONSTRAINT "AccountingBatch_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "AccountingBatch_createdAt_idx" ON "AccountingBatch"("createdAt");
+CREATE UNIQUE INDEX "AccountingBatch_label_key" ON "AccountingBatch"("label");
 
 ALTER TABLE "Invoice" ADD COLUMN "accountingBatchId" TEXT;
 ALTER TABLE "Invoice" ADD COLUMN "accountingFileName" TEXT;

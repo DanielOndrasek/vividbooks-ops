@@ -338,7 +338,10 @@ async function processOneDocument(
   // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří — skrýt (stav DUPLICATE
   // s OWN_ISSUED_MARKER), ne smazat: kdyby AI přečetla odběratele místo dodavatele, jde to obnovit.
   // Platí i pro zaplacenou vydanou fakturu klasifikovanou jako doklad k platbě.
-  const ownIssued = isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC);
+  // Automaticky skrýváme (vydaná VB / duplicita) jen při dostatečné jistotě; jinak rozhodne člověk.
+  const confidentEnough = Math.min(classification.confidence, extraction.confidence) >= threshold;
+  const ownIssued =
+    confidentEnough && isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC);
 
   const combinedConfidence = Math.min(
     classification.confidence,
@@ -361,7 +364,8 @@ async function processOneDocument(
     documentKind: extraction.documentKind,
     originalFilename: doc.originalFilename,
   });
-  const existing = dedupKey && !ownIssued ? await findExistingByDedupKey(dedupKey, id) : null;
+  const existing =
+    dedupKey && !ownIssued && confidentEnough ? await findExistingByDedupKey(dedupKey, id) : null;
   const decision = decideDuplicate(classification.type, existing);
   const isDuplicate = ownIssued || decision.action === "new_is_duplicate";
   const duplicateOf = ownIssued
