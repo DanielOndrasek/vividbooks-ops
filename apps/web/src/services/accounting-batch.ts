@@ -256,9 +256,15 @@ export async function createAccountingBatch(input: {
     throw new Error("Chybí ACCOUNTANT_EMAILS — dávku by nikdo z účetní neotevřel.");
   }
   const c = await collectBatchCandidates(input.since, now);
-  const label = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
+  const baseLabel = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
+  // Navázat na neodeslanou dávku dne; po odeslání má další dávka téhož dne vlastní složku „(2)“.
+  const sameDay = await prisma.accountingBatch.findMany({
+    where: { label: { startsWith: baseLabel } },
+    orderBy: { createdAt: "asc" },
+  });
+  let batch = sameDay.find((b) => b.sentAt == null) ?? null;
+  const label = batch ? batch.label : sameDay.length === 0 ? baseLabel : `${baseLabel} (${sameDay.length + 1})`;
 
-  let batch = await prisma.accountingBatch.findFirst({ where: { label, sentAt: null } });
   if (!batch && c.invoices.length === 0 && c.payments.length === 0) {
     throw new Error("Od minulé dávky nejsou žádné schválené faktury ani doklady k platbě.");
   }

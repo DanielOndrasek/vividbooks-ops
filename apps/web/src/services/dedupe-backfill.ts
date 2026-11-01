@@ -12,6 +12,7 @@ import {
   classificationHintFromFilename,
   documentNumberFromPaymentNote,
   isOwnCompanySupplier,
+  OWN_ISSUED_MARKER,
 } from "@/lib/document-dedupe";
 import { prisma } from "@/lib/prisma";
 import { markDocumentDuplicate, recordFingerprint } from "@/services/document-dedupe-store";
@@ -152,7 +153,7 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
       filename: r.filename,
       action:
         r.type === "INVOICE" && r.status !== "APPROVED"
-          ? "smazat z evidence"
+          ? "skrýt (vydaná faktura VB)"
           : "ponechat – rozhodne člověk (schválená faktura nebo uložená platba)",
     })),
     groups: duplicateGroups.map((g) => ({
@@ -198,16 +199,19 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
   // Automaticky mažeme jen neschválené FAKTURY s IČO/DIČ vlastní firmy; platby a schválené jen hlásíme.
   const ownToDelete = ownIssued.filter((r) => r.type === "INVOICE" && r.status !== "APPROVED");
   for (const r of ownToDelete) {
+    await prisma.document.update({
+      where: { id: r.documentId },
+      data: { status: DocumentStatus.DUPLICATE, duplicateOfDocumentId: OWN_ISSUED_MARKER, needsManualReview: false, dedupKey: null },
+    });
     await recordFingerprint({
       contentHash: r.contentHash,
       dedupKey: null,
-      documentType: r.type === "INVOICE" ? DocumentType.INVOICE : DocumentType.PAYMENT_RECEIPT,
+      documentType: DocumentType.INVOICE,
       outcome: "own_issued",
-      documentId: null,
+      documentId: r.documentId,
       supplierName: r.supplierName,
       documentNumber: r.number,
     });
-    await prisma.document.delete({ where: { id: r.documentId } });
     await writeAuditLog({
       entityType: "Document",
       entityId: r.documentId,

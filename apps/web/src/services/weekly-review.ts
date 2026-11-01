@@ -4,7 +4,7 @@
 
 import { DocumentStatus } from "@prisma/client";
 
-import { normalizeSupplierName } from "@/lib/document-dedupe";
+import { normalizeSupplierName, OWN_ISSUED_MARKER } from "@/lib/document-dedupe";
 import { prisma } from "@/lib/prisma";
 import { collectBatchCandidates, summarizeCandidates } from "@/services/accounting-batch";
 
@@ -110,7 +110,11 @@ export async function buildWeeklyReview(since: Date | null) {
     prisma.invoice.count({ where: { document: { status: DocumentStatus.UPLOAD_FAILED } } }),
     prisma.document.count({ where: { documentType: "UNKNOWN", status: DocumentStatus.NEEDS_REVIEW } }),
     prisma.document.findMany({
-      where: { status: DocumentStatus.DUPLICATE, updatedAt: { gte: reviewFrom } },
+      where: {
+        status: DocumentStatus.DUPLICATE,
+        updatedAt: { gte: reviewFrom },
+        OR: [{ duplicateOfDocumentId: null }, { duplicateOfDocumentId: { not: OWN_ISSUED_MARKER } }],
+      },
       select: {
         id: true,
         originalFilename: true,

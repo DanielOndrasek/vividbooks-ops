@@ -3,16 +3,26 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { RestoreDuplicateButton } from "@/components/restore-duplicate-button";
 import { canRunIntegrationJobs } from "@/lib/api-jobs-auth";
+import { OWN_ISSUED_MARKER } from "@/lib/document-dedupe";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function DuplicatesPage() {
+type Props = { searchParams: Promise<{ own?: string }> };
+
+export default async function DuplicatesPage({ searchParams }: Props) {
+  const sp = await searchParams;
+  const showOwn = sp.own === "1";
   const session = await auth();
   const canAct = canRunIntegrationJobs(session?.user?.role);
 
   const rows = await prisma.document.findMany({
-    where: { status: "DUPLICATE" },
+    where: showOwn
+      ? { status: "DUPLICATE", duplicateOfDocumentId: OWN_ISSUED_MARKER }
+      : {
+          status: "DUPLICATE",
+          OR: [{ duplicateOfDocumentId: null }, { duplicateOfDocumentId: { not: OWN_ISSUED_MARKER } }],
+        },
     orderBy: { updatedAt: "desc" },
     take: 300,
     include: {
@@ -22,6 +32,10 @@ export default async function DuplicatesPage() {
         select: { id: true, counterpartyName: true, documentNumber: true, amount: true, currency: true, note: true },
       },
     },
+  });
+
+  const ownCount = await prisma.document.count({
+    where: { status: "DUPLICATE", duplicateOfDocumentId: OWN_ISSUED_MARKER },
   });
 
   const originalIds = Array.from(
@@ -43,6 +57,18 @@ export default async function DuplicatesPage() {
           Doklady, které už v evidenci jsou: stejný soubor, stejný dodavatel + číslo + částka, nebo faktura, ke
           které přišla účtenka (účetní stačí účtenka). Ze seznamů faktur a plateb jsou schované, nikam se
           neposílají. Když se pravidlo splete, klikněte na Obnovit.
+        </p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          {showOwn ? (
+            <Link className="underline" href="/duplicates">← zpět na duplicity</Link>
+          ) : (
+            <>
+              Skryté vydané faktury Vividbooks: {ownCount}{" "}
+              {ownCount > 0 && (
+                <Link className="underline" href="/duplicates?own=1">zobrazit</Link>
+              )}
+            </>
+          )}
         </p>
       </div>
       {rows.length === 0 ? (
@@ -88,6 +114,8 @@ export default async function DuplicatesPage() {
                         <a className="underline" href={`/api/documents/${orig.id}/file`} target="_blank" rel="noreferrer">
                           {orig.originalFilename}
                         </a>
+                      ) : r.duplicateOfDocumentId === OWN_ISSUED_MARKER ? (
+                        "vydaná faktura VB"
                       ) : r.duplicateOfDocumentId ? (
                         "(promazáno z DB)"
                       ) : (

@@ -75,6 +75,8 @@ test("nápověda z názvu souboru", () => {
 
 test("šum v přílohách", () => {
   assert.equal(isNoiseAttachment({ filename: "image001.png", mimeType: "image/png", size: 4000 }), true);
+  // velká vložená fotka (účtenka) není šum, ani když se jmenuje image001
+  assert.equal(isNoiseAttachment({ filename: "image001.jpg", mimeType: "image/jpeg", size: 350000 }), false);
   assert.equal(isNoiseAttachment({ filename: "CZ - Obchodní podmínky.pdf", mimeType: "application/pdf", size: 90000 }), true);
   assert.equal(isNoiseAttachment({ filename: "VOP_RR_06082026.pdf", mimeType: "application/pdf", size: 90000 }), true);
   assert.equal(isNoiseAttachment({ filename: "uctenka.jpg", mimeType: "image/jpeg", size: 400000 }), false);

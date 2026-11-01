@@ -10,6 +10,7 @@ import {
   classificationHintFromFilename,
   decideDuplicate,
   isOwnCompanySupplier,
+  OWN_ISSUED_MARKER,
 } from "@/lib/document-dedupe";
 import type { ClassificationResult, ExtractionResult } from "@/lib/documentSchemas";
 import { loadDocumentFileBuffer } from "@/lib/document-file-buffer";
@@ -334,42 +335,11 @@ async function processOneDocument(
     classification.type,
   );
 
-  // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří vůbec — smazat, nechat jen stopu.
-  // Jen u FAKTUR; doklad k platbě s naším IČO jde normální cestou (rozhodne člověk).
-  if (
+  // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří — skrýt (stav DUPLICATE
+  // s OWN_ISSUED_MARKER), ne smazat: kdyby AI přečetla odběratele místo dodavatele, jde to obnovit.
+  const ownIssued =
     classification.type === "INVOICE" &&
-    isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC)
-  ) {
-    await recordFingerprint({
-      contentHash: doc.contentHash,
-      dedupKey: null,
-      documentType: classification.type,
-      outcome: "own_issued",
-      documentId: null,
-      supplierName: extraction.supplierName,
-      documentNumber: extraction.invoiceNumber,
-    });
-    await prisma.document.delete({ where: { id } });
-    if (doc.localFilePath) {
-      try {
-        const fs = await import("node:fs/promises");
-        await fs.unlink(doc.localFilePath);
-      } catch {
-        /* temp */
-      }
-    }
-    await writeAuditLog({
-      entityType: "Document",
-      entityId: id,
-      action: "own_issued_invoice_dropped",
-      metadata: {
-        originalFilename: doc.originalFilename,
-        invoiceNumber: extraction.invoiceNumber,
-        amountWithVat: extraction.amountWithVat,
-      },
-    });
-    return;
-  }
+    isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC);
 
   const combinedConfidence = Math.min(
     classification.confidence,
@@ -392,10 +362,14 @@ async function processOneDocument(
     documentKind: extraction.documentKind,
     originalFilename: doc.originalFilename,
   });
-  const existing = dedupKey ? await findExistingByDedupKey(dedupKey, id) : null;
+  const existing = dedupKey && !ownIssued ? await findExistingByDedupKey(dedupKey, id) : null;
   const decision = decideDuplicate(classification.type, existing);
-  const isDuplicate = decision.action === "new_is_duplicate";
-  const duplicateOf = isDuplicate ? decision.keepDocumentId : null;
+  const isDuplicate = ownIssued || decision.action === "new_is_duplicate";
+  const duplicateOf = ownIssued
+    ? OWN_ISSUED_MARKER
+    : decision.action === "new_is_duplicate"
+      ? decision.keepDocumentId
+      : null;
 
   if (classification.type === "PAYMENT_RECEIPT") {
     const note = [
@@ -553,16 +527,16 @@ async function processOneDocument(
       classificationConfidence: classification.confidence,
       aiRawResponse: rawBundle.slice(0, 65000),
       needsManualReview: isDuplicate ? false : needsManualReview,
-      dedupKey,
+      dedupKey: ownIssued ? null : dedupKey,
       duplicateOfDocumentId: duplicateOf,
     },
   });
 
   await recordFingerprint({
     contentHash: doc.contentHash,
-    dedupKey,
+    dedupKey: ownIssued ? null : dedupKey,
     documentType: DocumentType.INVOICE,
-    outcome: isDuplicate ? "duplicate" : "kept",
+    outcome: ownIssued ? "own_issued" : isDuplicate ? "duplicate" : "kept",
     documentId: id,
     supplierName: extraction.supplierName,
     documentNumber: extraction.invoiceNumber,
@@ -571,7 +545,7 @@ async function processOneDocument(
   await writeAuditLog({
     entityType: "Document",
     entityId: id,
-    action: isDuplicate ? "extracted_duplicate" : "data_extracted",
+    action: ownIssued ? "own_issued_invoice_dropped" : isDuplicate ? "extracted_duplicate" : "data_extracted",
     metadata: {
       type: "INVOICE",
       combinedConfidence,

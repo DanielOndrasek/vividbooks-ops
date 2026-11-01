@@ -2,6 +2,9 @@
  * Čistá logika pro třídění a hledání duplicit dokladů (bez Prisma / sítě → testovatelné).
  */
 
+/** Hodnota Document.duplicateOfDocumentId u skrytých vydaných faktur VB (ne duplicita, ale „nepatří sem“). */
+export const OWN_ISSUED_MARKER = "__own_issued__";
+
 /** IČO Vividbooks s.r.o. — doklady s tímto dodavatelem jsou vydané faktury, do evidence nepatří. */
 export const OWN_COMPANY_ICOS = ["08637351"];
 
@@ -160,9 +163,9 @@ export type AttachmentLike = {
   size?: number | null;
 };
 
+/** Vložené obrázky z Outlooku/podpisů — šum jen když jsou malé (fotka účtenky bývá stovky kB). */
+const INLINE_IMAGE_NAME = [/^image\d{3}\.(png|jpe?g|gif)$/i, /^outlook-[a-z0-9]+\.(png|jpe?g)$/i];
 const NOISE_NAME = [
-  /^image\d{3}\.(png|jpe?g|gif)$/i,
-  /^outlook-[a-z0-9]+\.(png|jpe?g)$/i,
   /obchodn[ií][-_ ]?podm[ií]nky/i,
   /(^|[-_ ])vop([-_ .]|$)/i,
   /terms[-_ ]?(of|and)[-_ ]?(service|conditions)/i,
@@ -175,7 +178,13 @@ const NOISE_NAME = [
  * Jen podle názvu: malá fotka účtenky je pořád doklad (a e-mail se po zpracování znovu nenačte).
  */
 export function isNoiseAttachment(att: AttachmentLike): boolean {
-  return NOISE_NAME.some((re) => re.test(att.filename));
+  if (NOISE_NAME.some((re) => re.test(att.filename))) {
+    return true;
+  }
+  if (INLINE_IMAGE_NAME.some((re) => re.test(att.filename))) {
+    return att.size != null && att.size > 0 && att.size < 60_000;
+  }
+  return false;
 }
 
 /** „1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf“ → { prefix: „1a0b2efa11601e6c-“, kind: „invoice“ } */
