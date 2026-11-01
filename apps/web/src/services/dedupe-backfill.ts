@@ -132,9 +132,9 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
     const sorted = [...list].sort((a, b) => rank(a) - rank(b) || a.createdAt.getTime() - b.createdAt.getTime());
     const keep = sorted[0]!;
     const rest = sorted.slice(1);
-    // Fakturu skrýt za účtenku jen když je účtenka uložená (STORED) — jinak by účetní nedostala nic.
     const receiptNotStored = keep.type === "PAYMENT_RECEIPT" && keep.status !== "STORED";
-    const unsafe = (r: Row) => r.status === "APPROVED" || (receiptNotStored && r.type === "INVOICE");
+    // Ponechaná účtenka není uložená → ve skupině nic neschovávat (ani další účtenky), jen nahlásit.
+    const unsafe = (r: Row) => r.status === "APPROVED" || receiptNotStored;
     duplicateGroups.push({
       key,
       keep,
