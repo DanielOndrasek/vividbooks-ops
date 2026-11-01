@@ -7,10 +7,7 @@ import { createHash } from "node:crypto";
 import type { gmail_v1 } from "googleapis";
 
 import { writeAuditLog } from "@/lib/audit";
-import {
-  isNoiseAttachment,
-  stripeInvoicesSupersededByReceipts,
-} from "@/lib/document-dedupe";
+import { isNoiseAttachment } from "@/lib/document-dedupe";
 import { gmailOnlyUnread } from "@/lib/gmail-config";
 import { prisma } from "@/lib/prisma";
 import {
@@ -30,7 +27,7 @@ export type EmailPollResult = {
   messagesScanned: number;
   documentsCreated: number;
   skippedDuplicates: number;
-  /** Loga z podpisů, obchodní podmínky, Stripe faktury s účtenkou v témže e-mailu. */
+  /** Loga z podpisů, obchodní podmínky. */
   skippedFiltered: number;
   perMessage: Array<{
     gmailMessageId: string;
@@ -125,10 +122,10 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       let msgDocs = 0;
       let msgSkipped = 0;
       const msgFiltered: string[] = [];
-      const supersededInvoices = stripeInvoicesSupersededByReceipts(attachments);
 
       for (const att of attachments) {
-        if (isNoiseAttachment(att) || supersededInvoices.has(att.filename)) {
+        // Stripe Invoice+Receipt se tady NEpřeskakuje: faktura se skryje až po uložení účtenky (po extrakci).
+        if (isNoiseAttachment(att)) {
           skippedFiltered += 1;
           msgFiltered.push(att.filename);
           continue;

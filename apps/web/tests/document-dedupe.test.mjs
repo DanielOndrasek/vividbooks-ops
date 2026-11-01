@@ -11,7 +11,6 @@ import {
   isNoiseAttachment,
   isOwnCompanySupplier,
   normalizeSupplierName,
-  stripeInvoicesSupersededByReceipts,
 } from "../src/lib/document-dedupe.ts";
 
 test("jméno dodavatele bez právní formy a závorek", () => {
@@ -85,36 +84,6 @@ test("šum v přílohách", () => {
   assert.equal(isNoiseAttachment({ filename: "IMG_2041.jpg", mimeType: "image/jpeg", size: 18000 }), false);
 });
 
-test("Stripe pár v jednom e-mailu → přeskočit fakturu", () => {
-  const skip = stripeInvoicesSupersededByReceipts([
-    { filename: "1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf", mimeType: "application/pdf" },
-    { filename: "1a0b2efa11601e6c-Receipt-2477-3087.pdf", mimeType: "application/pdf" },
-    { filename: "1a05cfe8a52872c6-Invoice-DT4ODG3R-0001.pdf", mimeType: "application/pdf" },
-    { filename: "Cursor-RH8JHNNL-0113.pdf", mimeType: "application/pdf" },
-  ]);
-  assert.deepEqual([...skip], ["1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf"]);
-  const skip2 = stripeInvoicesSupersededByReceipts([
-    { filename: "Invoice-XVGMOKDB-0006.pdf", mimeType: "application/pdf" },
-    { filename: "Receipt-2890-5089-1438.pdf", mimeType: "application/pdf" },
-  ]);
-  // bez prefixu pár ověřit nejde → nic nepřeskočit (nahrazení řeší deduplikace po extrakci)
-  assert.equal(skip2.size, 0);
-  // víc nespárovaných souborů bez prefixu → nic nepřeskočit
-  const skip3 = stripeInvoicesSupersededByReceipts([
-    { filename: "Invoice-A1.pdf", mimeType: "application/pdf" },
-    { filename: "Invoice-C3.pdf", mimeType: "application/pdf" },
-    { filename: "Receipt-B2.pdf", mimeType: "application/pdf" },
-  ]);
-  assert.equal(skip3.size, 0);
-  // stejný prefix, dvě faktury + jedna účtenka → nic nepřeskočit
-  const skip4 = stripeInvoicesSupersededByReceipts([
-    { filename: "abc-Invoice-1.pdf", mimeType: "application/pdf" },
-    { filename: "abc-Invoice-2.pdf", mimeType: "application/pdf" },
-    { filename: "abc-Receipt-9.pdf", mimeType: "application/pdf" },
-  ]);
-  assert.equal(skip4.size, 0);
-});
-
 test("rozhodnutí o duplicitě", () => {
   assert.deepEqual(decideDuplicate("INVOICE", null), { action: "keep_new" });
   assert.deepEqual(
@@ -128,6 +97,10 @@ test("rozhodnutí o duplicitě", () => {
   assert.deepEqual(
     decideDuplicate("INVOICE", { documentId: "d2", documentType: "PAYMENT_RECEIPT", status: "STORED" }),
     { action: "new_is_duplicate", keepDocumentId: "d2" },
+  );
+  assert.deepEqual(
+    decideDuplicate("INVOICE", { documentId: "d3", documentType: "PAYMENT_RECEIPT", status: "NEEDS_REVIEW" }),
+    { action: "keep_new" },
   );
   assert.deepEqual(
     decideDuplicate("INVOICE", { documentId: null, documentType: "INVOICE", status: null }),

@@ -187,52 +187,6 @@ export function isNoiseAttachment(att: AttachmentLike): boolean {
   return false;
 }
 
-/** „1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf“ → { prefix: „1a0b2efa11601e6c-“, kind: „invoice“ } */
-function stripeFileKind(filename: string): { prefix: string; kind: "invoice" | "receipt" } | null {
-  const m = filename.match(/^(.*?)(invoice|receipt)[-_][^/]*\.pdf$/i);
-  if (!m) {
-    return null;
-  }
-  return { prefix: m[1]!.toLowerCase(), kind: m[2]!.toLowerCase() as "invoice" | "receipt" };
-}
-
-/**
- * Stripe posílá v jednom e-mailu Invoice-…pdf i Receipt-…pdf ke stejné platbě. Účetní stačí účtenka.
- * Vrací názvy příloh, které se mají přeskočit (faktury, ke kterým je v e-mailu účtenka se stejným prefixem).
- */
-export function stripeInvoicesSupersededByReceipts(attachments: AttachmentLike[]): Set<string> {
-  const receiptPrefixes = new Set<string>();
-  for (const a of attachments) {
-    const k = stripeFileKind(a.filename);
-    if (k?.kind === "receipt") {
-      receiptPrefixes.add(k.prefix);
-    }
-  }
-  const skip = new Set<string>();
-  if (receiptPrefixes.size === 0) {
-    return skip;
-  }
-  for (const a of attachments) {
-    const k = stripeFileKind(a.filename);
-    if (k?.kind !== "invoice" || !receiptPrefixes.has(k.prefix)) {
-      continue;
-    }
-    // Bez prefixu nelze pár ověřit → nepřeskakovat; účtenka fakturu nahradí až po extrakci (stejné číslo).
-    if (k.prefix === "") {
-      continue;
-    }
-    // Pár jen 1 : 1 (jedna faktura + jedna účtenka se stejným prefixem), jinak rozhodne deduplikace po extrakci.
-    const same = attachments
-      .map((x) => stripeFileKind(x.filename))
-      .filter((x) => x?.prefix === k.prefix);
-    if (same.filter((x) => x?.kind === "invoice").length !== 1 || same.filter((x) => x?.kind === "receipt").length !== 1) {
-      continue;
-    }
-    skip.add(a.filename);
-  }
-  return skip;
-}
-
 export type ExistingDocForDedup = {
   documentId: string | null;
   documentType: "INVOICE" | "PAYMENT_RECEIPT" | string;
@@ -269,6 +223,15 @@ export function decideDuplicate(
     REPLACEABLE_INVOICE_STATUSES.has(existing.status)
   ) {
     return { action: "replace_existing", replaceDocumentId: existing.documentId };
+  }
+  // Fakturu neskrývat za účtenku, která ještě není bezpečně uložená (STORED) — obě nechat, rozhodne člověk.
+  if (
+    newType === "INVOICE" &&
+    existing.documentType === "PAYMENT_RECEIPT" &&
+    existing.status != null &&
+    existing.status !== "STORED"
+  ) {
+    return { action: "keep_new" };
   }
   return { action: "new_is_duplicate", keepDocumentId: existing.documentId };
 }
