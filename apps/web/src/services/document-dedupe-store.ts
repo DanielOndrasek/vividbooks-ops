@@ -36,16 +36,22 @@ export async function findExistingByDedupKey(
   if (pick) {
     return { documentId: pick.id, documentType: pick.documentType, status: pick.status };
   }
-  const fp = await prisma.documentFingerprint.findFirst({
+  // Stopa platí jen za dokument, který už v DB není (promazané schválené faktury).
+  // Živé dokumenty (i zamítnuté) rozhodl dotaz výše — zamítnutý originál nic neschová.
+  const fps = await prisma.documentFingerprint.findMany({
     where: {
       dedupKey,
       outcome: "kept",
       ...(excludeDocumentId ? { NOT: { documentId: excludeDocumentId } } : {}),
     },
     orderBy: { createdAt: "asc" },
+    take: 20,
   });
-  if (fp) {
-    // Dokument už v DB není (promazané schválené faktury) — porovnáváme jen se stopou.
+  for (const fp of fps) {
+    if (fp.documentId) {
+      const alive = await prisma.document.findUnique({ where: { id: fp.documentId }, select: { id: true } });
+      if (alive) continue;
+    }
     return { documentId: null, documentType: fp.documentType, status: null };
   }
   return null;

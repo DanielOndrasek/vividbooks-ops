@@ -46,8 +46,12 @@ export async function markDuplicateFromUser(input: {
       where: { id: input.duplicateOfDocumentId },
       select: { status: true },
     });
-    if (!keep || keep.status === DocumentStatus.DUPLICATE) {
-      return { ok: false, error: "Doklad, který má zůstat, neexistuje nebo je sám duplicitou.", httpStatus: 400 };
+    if (!keep || keep.status === DocumentStatus.DUPLICATE || keep.status === DocumentStatus.REJECTED) {
+      return {
+        ok: false,
+        error: "Doklad, který má zůstat, neexistuje, je zamítnutý nebo je sám duplicitou.",
+        httpStatus: 400,
+      };
     }
     if (doc.status === DocumentStatus.STORED) {
       // Uloženou platbu skrýt jen za doklad se stejným dodavatelem a částkou.
