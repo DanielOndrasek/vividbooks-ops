@@ -135,3 +135,30 @@ export function getAnthropicEnvStatus(): AnthropicEnvStatus {
     envBatchSet: Boolean(process.env.AI_BATCH_LIMIT?.trim()),
   };
 }
+
+export const DEFAULT_FULFILLMENT_API_BASE =
+  "https://client.api.fulfillment.cz/v2/fulfillment";
+
+export type FulfillmentEnvStatus = {
+  apiToken: string;
+  apiBase: string;
+  configured: boolean;
+  missing: string[];
+};
+
+/** Skladová zásoba z Fulfillment.cz (API V2). Token z administrace Fulfillment.cz. */
+export function getFulfillmentEnv(): FulfillmentEnvStatus {
+  const apiToken = process.env.FULFILLMENT_API_TOKEN?.trim() ?? "";
+  const apiBase =
+    process.env.FULFILLMENT_API_BASE?.trim() || DEFAULT_FULFILLMENT_API_BASE;
+  const missing: string[] = [];
+  if (!apiToken) {
+    missing.push("FULFILLMENT_API_TOKEN");
+  }
+  return {
+    apiToken,
+    apiBase,
+    configured: Boolean(apiToken),
+    missing,
+  };
+}
