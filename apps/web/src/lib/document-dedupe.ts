@@ -221,6 +221,13 @@ export function stripeInvoicesSupersededByReceipts(attachments: AttachmentLike[]
     if (k.prefix === "") {
       continue;
     }
+    // Pár jen 1 : 1 (jedna faktura + jedna účtenka se stejným prefixem), jinak rozhodne deduplikace po extrakci.
+    const same = attachments
+      .map((x) => stripeFileKind(x.filename))
+      .filter((x) => x?.prefix === k.prefix);
+    if (same.filter((x) => x?.kind === "invoice").length !== 1 || same.filter((x) => x?.kind === "receipt").length !== 1) {
+      continue;
+    }
     skip.add(a.filename);
   }
   return skip;

@@ -337,9 +337,8 @@ async function processOneDocument(
 
   // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří — skrýt (stav DUPLICATE
   // s OWN_ISSUED_MARKER), ne smazat: kdyby AI přečetla odběratele místo dodavatele, jde to obnovit.
-  const ownIssued =
-    classification.type === "INVOICE" &&
-    isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC);
+  // Platí i pro zaplacenou vydanou fakturu klasifikovanou jako doklad k platbě.
+  const ownIssued = isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC);
 
   const combinedConfidence = Math.min(
     classification.confidence,
@@ -416,16 +415,16 @@ async function processOneDocument(
         classificationConfidence: classification.confidence,
         aiRawResponse: rawBundle.slice(0, 65000),
         needsManualReview: isDuplicate ? false : payNeedsReview,
-        dedupKey,
+        dedupKey: ownIssued ? null : dedupKey,
         duplicateOfDocumentId: duplicateOf,
       },
     });
 
     await recordFingerprint({
       contentHash: doc.contentHash,
-      dedupKey,
+      dedupKey: ownIssued ? null : dedupKey,
       documentType: DocumentType.PAYMENT_RECEIPT,
-      outcome: isDuplicate ? "duplicate" : "kept",
+      outcome: ownIssued ? "own_issued" : isDuplicate ? "duplicate" : "kept",
       documentId: id,
       supplierName: extraction.supplierName,
       documentNumber: extraction.invoiceNumber,
@@ -434,7 +433,7 @@ async function processOneDocument(
     await writeAuditLog({
       entityType: "Document",
       entityId: id,
-      action: isDuplicate ? "extracted_duplicate" : "data_extracted",
+      action: ownIssued ? "own_issued_invoice_dropped" : isDuplicate ? "extracted_duplicate" : "data_extracted",
       metadata: {
         type: "PAYMENT_RECEIPT",
         combinedConfidence,

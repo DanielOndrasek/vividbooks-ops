@@ -407,12 +407,13 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
   const share = await shareFolderWithEmails(folders.batchFolderId, accountantEmails());
 
   // Úplnost: nezůstal do konce období dávky nějaký schválený doklad nezařazený (např. selhala kopie)?
-  let missingItems = 0;
+  // -1 = kontrolu se nepodařilo provést → dávka není připravená.
+  let missingItems = -1;
   try {
     const rest = await collectBatchCandidates(batch.periodFrom, batch.periodTo);
     missingItems = rest.invoices.length + rest.payments.length;
   } catch {
-    missingItems = 0;
+    missingItems = -1;
   }
 
   await prisma.accountingBatch.update({

@@ -106,6 +106,13 @@ test("Stripe pár v jednom e-mailu → přeskočit fakturu", () => {
     { filename: "Receipt-B2.pdf", mimeType: "application/pdf" },
   ]);
   assert.equal(skip3.size, 0);
+  // stejný prefix, dvě faktury + jedna účtenka → nic nepřeskočit
+  const skip4 = stripeInvoicesSupersededByReceipts([
+    { filename: "abc-Invoice-1.pdf", mimeType: "application/pdf" },
+    { filename: "abc-Invoice-2.pdf", mimeType: "application/pdf" },
+    { filename: "abc-Receipt-9.pdf", mimeType: "application/pdf" },
+  ]);
+  assert.equal(skip4.size, 0);
 });
 
 test("rozhodnutí o duplicitě", () => {
