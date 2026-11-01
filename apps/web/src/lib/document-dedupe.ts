@@ -192,11 +192,22 @@ export function stripeInvoicesSupersededByReceipts(attachments: AttachmentLike[]
   if (receiptPrefixes.size === 0) {
     return skip;
   }
+  // Bez prefixu (Invoice-X.pdf + Receipt-Y.pdf) párujeme jen 1 : 1 — klasický Stripe e-mail.
+  // Víc faktur nebo účtenek bez prefixu = nejasné → nic nepřeskakovat, rozhodne deduplikace po extrakci.
+  const count = (prefix: string, kind: "invoice" | "receipt") =>
+    attachments.filter((a) => {
+      const k = stripeFileKind(a.filename);
+      return k?.prefix === prefix && k.kind === kind;
+    }).length;
   for (const a of attachments) {
     const k = stripeFileKind(a.filename);
-    if (k?.kind === "invoice" && receiptPrefixes.has(k.prefix)) {
-      skip.add(a.filename);
+    if (k?.kind !== "invoice" || !receiptPrefixes.has(k.prefix)) {
+      continue;
     }
+    if (k.prefix === "" && (count("", "invoice") !== 1 || count("", "receipt") !== 1)) {
+      continue;
+    }
+    skip.add(a.filename);
   }
   return skip;
 }

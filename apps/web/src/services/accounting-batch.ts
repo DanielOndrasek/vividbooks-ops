@@ -63,7 +63,11 @@ export function accountingFileName(
 }
 
 function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  // Ochrana proti vzorcům v Excelu (=, +, -, @) — kromě čísel (záporná částka dobropisu).
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) {
+    s = `'${s}`;
+  }
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -177,6 +181,8 @@ export type CreatedBatch = {
   sharedWith: string[];
   shareErrors: string[];
   copyErrors: string[];
+  /** Agent smí poslat e-mail účetní jen když true (vše zkopírováno a nasdíleno). */
+  readyToSend: boolean;
 };
 
 export async function createAccountingBatch(input: {
@@ -185,14 +191,32 @@ export async function createAccountingBatch(input: {
   now?: Date;
 }): Promise<CreatedBatch> {
   const now = input.now ?? new Date();
+  const emails = accountantEmails();
+  if (emails.length === 0) {
+    throw new Error("Chybí ACCOUNTANT_EMAILS — dávku by nikdo z účetní neotevřel.");
+  }
   const c = await collectBatchCandidates(input.since, now);
   if (c.invoices.length === 0 && c.payments.length === 0) {
     throw new Error("Od minulé dávky nejsou žádné schválené faktury ani doklady k platbě.");
   }
-  const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
-  const periodFrom = lastBatch?.periodTo ?? c.periodFrom;
   const label = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
   const folders = await ensureAccountingBatchFolders(label, now);
+  const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
+
+  // Záznam dávky hned na začátku a každý zkopírovaný doklad se k ní hned přiřadí:
+  // když běh spadne uprostřed, opakování nekopíruje znovu to, co už ve složce je.
+  const batch = await prisma.accountingBatch.create({
+    data: {
+      label,
+      periodFrom: lastBatch?.periodTo ?? c.periodFrom,
+      periodTo: c.periodTo,
+      invoicesFolderId: folders.invoicesFolderId,
+      invoicesFolderUrl: folders.invoicesFolderUrl,
+      paymentsFolderId: folders.paymentsFolderId,
+      paymentsFolderUrl: folders.paymentsFolderUrl,
+      createdByUserId: input.userId,
+    },
+  });
 
   const copyErrors: string[] = [];
   const invoiceIds: string[] = [];
@@ -216,6 +240,7 @@ export async function createAccountingBatch(input: {
     );
     try {
       await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
+      await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: batch.id } });
       invoiceIds.push(inv.id);
       invRows.push([
         name,
@@ -241,6 +266,7 @@ export async function createAccountingBatch(input: {
     );
     try {
       await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
+      await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: batch.id } });
       paymentIds.push(p.id);
       payRows.push([
         name,
@@ -275,33 +301,17 @@ export async function createAccountingBatch(input: {
     );
   }
 
-  const emails = accountantEmails();
-  const share = emails.length
-    ? await shareFolderWithEmails(folders.batchFolderId, emails)
-    : { shared: [], errors: [] };
+  const share = await shareFolderWithEmails(folders.batchFolderId, emails);
 
-  const batch = await prisma.accountingBatch.create({
+  await prisma.accountingBatch.update({
+    where: { id: batch.id },
     data: {
-      label,
-      periodFrom,
-      periodTo: c.periodTo,
-      invoicesFolderId: folders.invoicesFolderId,
-      invoicesFolderUrl: folders.invoicesFolderUrl,
-      paymentsFolderId: folders.paymentsFolderId,
-      paymentsFolderUrl: folders.paymentsFolderUrl,
       invoiceCount: invoiceIds.length,
       paymentCount: paymentIds.length,
       sharedWith: share.shared.join(", ") || null,
       shareError: share.errors.join("\n") || null,
-      createdByUserId: input.userId,
     },
   });
-  if (invoiceIds.length) {
-    await prisma.invoice.updateMany({ where: { id: { in: invoiceIds } }, data: { accountingBatchId: batch.id } });
-  }
-  if (paymentIds.length) {
-    await prisma.paymentProof.updateMany({ where: { id: { in: paymentIds } }, data: { accountingBatchId: batch.id } });
-  }
 
   await writeAuditLog({
     entityType: "AccountingBatch",
@@ -327,7 +337,27 @@ export async function createAccountingBatch(input: {
     sharedWith: share.shared,
     shareErrors: share.errors,
     copyErrors,
+    readyToSend: share.errors.length === 0 && copyErrors.length === 0,
   };
+}
+
+/** Opakované nasdílení složky dávky (když napoprvé selhalo). */
+export async function reshareAccountingBatch(batchId: string) {
+  const batch = await prisma.accountingBatch.findUnique({ where: { id: batchId } });
+  if (!batch?.invoicesFolderId) {
+    throw new Error("Dávka nenalezena.");
+  }
+  const emails = accountantEmails();
+  if (emails.length === 0) {
+    throw new Error("Chybí ACCOUNTANT_EMAILS.");
+  }
+  const folders = await ensureAccountingBatchFolders(batch.label, batch.createdAt);
+  const share = await shareFolderWithEmails(folders.batchFolderId, emails);
+  await prisma.accountingBatch.update({
+    where: { id: batchId },
+    data: { sharedWith: share.shared.join(", ") || null, shareError: share.errors.join("\n") || null },
+  });
+  return { sharedWith: share.shared, shareErrors: share.errors, readyToSend: share.errors.length === 0 };
 }
 
 export async function markAccountingBatchSent(batchId: string, sentTo: string, userId: string | null) {
