@@ -90,7 +90,8 @@ test("Stripe pár v jednom e-mailu → přeskočit fakturu", () => {
     { filename: "Invoice-XVGMOKDB-0006.pdf", mimeType: "application/pdf" },
     { filename: "Receipt-2890-5089-1438.pdf", mimeType: "application/pdf" },
   ]);
-  assert.deepEqual([...skip2], ["Invoice-XVGMOKDB-0006.pdf"]);
+  // bez prefixu pár ověřit nejde → nic nepřeskočit (nahrazení řeší deduplikace po extrakci)
+  assert.equal(skip2.size, 0);
   // víc nespárovaných souborů bez prefixu → nic nepřeskočit
   const skip3 = stripeInvoicesSupersededByReceipts([
     { filename: "Invoice-A1.pdf", mimeType: "application/pdf" },

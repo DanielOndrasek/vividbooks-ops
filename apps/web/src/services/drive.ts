@@ -619,14 +619,33 @@ export async function copyDriveFileToFolder(
   return res.data.id!;
 }
 
-export async function uploadTextFileToFolder(
+/** Nahraje textový soubor; když už ve složce soubor stejného jména je, přepíše jeho obsah (opakovatelné). */
+export async function upsertTextFileInFolder(
   folderId: string,
   name: string,
   content: string,
   mimeType: string,
 ): Promise<void> {
   const drive = getDrive();
-  await uploadBufferToFolder(drive, folderId, name, Buffer.from(content, "utf8"), mimeType);
+  const q = `'${folderId}' in parents and name = '${escapeQueryName(name)}' and trashed = false`;
+  const res = await drive.files.list({
+    q,
+    fields: "files(id)",
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existingId = res.data.files?.[0]?.id;
+  const body = Buffer.from(content, "utf8");
+  if (existingId) {
+    await drive.files.update({
+      fileId: existingId,
+      supportsAllDrives: true,
+      media: { mimeType, body: Readable.from(body) },
+    });
+    return;
+  }
+  await uploadBufferToFolder(drive, folderId, name, body, mimeType);
 }
 
 /** Přístup ke složce (čtení) pro účetní — bez notifikačního e-mailu, odkaz pošle agent. */

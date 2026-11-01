@@ -11,7 +11,7 @@ import {
   copyDriveFileToFolder,
   ensureAccountingBatchFolders,
   shareFolderWithEmails,
-  uploadTextFileToFolder,
+  upsertTextFileInFolder,
 } from "@/services/drive";
 
 export function accountantEmails(): string[] {
@@ -181,138 +181,128 @@ export type CreatedBatch = {
   sharedWith: string[];
   shareErrors: string[];
   copyErrors: string[];
-  /** Agent smí poslat e-mail účetní jen když true (vše zkopírováno a nasdíleno). */
+  overviewError: string | null;
+  /** Agent smí poslat e-mail účetní jen když true (vše zkopírováno, přehled nahraný, nasdíleno). */
   readyToSend: boolean;
 };
 
+type InvoiceForBatch = {
+  id: string;
+  supplierName: string | null;
+  invoiceNumber: string | null;
+  issueDate: Date | null;
+  document: { originalFilename: string };
+};
+type PaymentForBatch = {
+  id: string;
+  counterpartyName: string | null;
+  documentNumber: string | null;
+  paymentDate: Date | null;
+  document: { originalFilename: string };
+};
+
+/** Deterministická jména souborů v dávce (stejná při kopírování i v přehledu, i po opakování). */
+function fileNamesFor<T extends { id: string }>(rows: T[], nameOf: (r: T) => string): Map<string, string> {
+  const sorted = [...rows].sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.id.localeCompare(b.id));
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const r of sorted) {
+    const base = nameOf(r);
+    let n = base;
+    let i = 2;
+    while (used.has(n.toLowerCase())) {
+      n = base.replace(/(\.[a-z0-9]+)$/i, `_${i}$1`);
+      i += 1;
+    }
+    used.add(n.toLowerCase());
+    out.set(r.id, n);
+  }
+  return out;
+}
+
+const invName = (i: InvoiceForBatch) =>
+  accountingFileName(i.supplierName, i.invoiceNumber, i.issueDate, i.document.originalFilename);
+const payName = (p: PaymentForBatch) =>
+  accountingFileName(p.counterpartyName, p.documentNumber, p.paymentDate, p.document.originalFilename);
+
+function batchItems(batchId: string) {
+  return Promise.all([
+    prisma.invoice.findMany({
+      where: { accountingBatchId: batchId },
+      include: { document: { select: { originalFilename: true } } },
+    }),
+    prisma.paymentProof.findMany({
+      where: { accountingBatchId: batchId },
+      include: { document: { select: { originalFilename: true } } },
+    }),
+  ]);
+}
+
+/**
+ * Vytvoří dávku, nebo navá na neodeslanou dávku téhož dne (po chybě): zkopíruje jen dosud
+ * nezařazené doklady, pak přehled + nasdílení z celé dávky. Opakované volání je bezpečné.
+ */
 export async function createAccountingBatch(input: {
   since: Date | null;
   userId: string | null;
   now?: Date;
 }): Promise<CreatedBatch> {
   const now = input.now ?? new Date();
-  const emails = accountantEmails();
-  if (emails.length === 0) {
+  if (accountantEmails().length === 0) {
     throw new Error("Chybí ACCOUNTANT_EMAILS — dávku by nikdo z účetní neotevřel.");
   }
   const c = await collectBatchCandidates(input.since, now);
-  if (c.invoices.length === 0 && c.payments.length === 0) {
+  const label = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
+
+  let batch = await prisma.accountingBatch.findFirst({ where: { label, sentAt: null } });
+  if (!batch && c.invoices.length === 0 && c.payments.length === 0) {
     throw new Error("Od minulé dávky nejsou žádné schválené faktury ani doklady k platbě.");
   }
-  const label = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
   const folders = await ensureAccountingBatchFolders(label, now);
-  const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
+  if (!batch) {
+    const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
+    batch = await prisma.accountingBatch.create({
+      data: {
+        label,
+        periodFrom: lastBatch?.periodTo ?? c.periodFrom,
+        periodTo: c.periodTo,
+        invoicesFolderId: folders.invoicesFolderId,
+        invoicesFolderUrl: folders.invoicesFolderUrl,
+        paymentsFolderId: folders.paymentsFolderId,
+        paymentsFolderUrl: folders.paymentsFolderUrl,
+        createdByUserId: input.userId,
+      },
+    });
+  } else {
+    batch = await prisma.accountingBatch.update({ where: { id: batch.id }, data: { periodTo: c.periodTo } });
+  }
 
-  // Záznam dávky hned na začátku a každý zkopírovaný doklad se k ní hned přiřadí:
-  // když běh spadne uprostřed, opakování nekopíruje znovu to, co už ve složce je.
-  const batch = await prisma.accountingBatch.create({
-    data: {
-      label,
-      periodFrom: lastBatch?.periodTo ?? c.periodFrom,
-      periodTo: c.periodTo,
-      invoicesFolderId: folders.invoicesFolderId,
-      invoicesFolderUrl: folders.invoicesFolderUrl,
-      paymentsFolderId: folders.paymentsFolderId,
-      paymentsFolderUrl: folders.paymentsFolderUrl,
-      createdByUserId: input.userId,
-    },
-  });
+  const [doneInv, donePay] = await batchItems(batch.id);
+  const invNames = fileNamesFor<InvoiceForBatch>([...doneInv, ...c.invoices], invName);
+  const payNames = fileNamesFor<PaymentForBatch>([...donePay, ...c.payments], payName);
 
   const copyErrors: string[] = [];
-  const invoiceIds: string[] = [];
-  const paymentIds: string[] = [];
-  const usedNames = new Set<string>();
-  const uniqueName = (name: string) => {
-    let n = name;
-    let i = 2;
-    while (usedNames.has(n.toLowerCase())) {
-      n = name.replace(/(\.[a-z0-9]+)$/i, `_${i}$1`);
-      i += 1;
-    }
-    usedNames.add(n.toLowerCase());
-    return n;
-  };
-
-  const invRows: unknown[][] = [];
   for (const inv of c.invoices) {
-    const name = uniqueName(
-      accountingFileName(inv.supplierName, inv.invoiceNumber, inv.issueDate, inv.document.originalFilename),
-    );
+    const name = invNames.get(inv.id)!;
     try {
       await copyDriveFileToFolder(inv.driveFileId!, folders.invoicesFolderId, name);
+      // Přiřadit hned — když běh spadne, opakování tenhle doklad znovu nekopíruje.
       await prisma.invoice.update({ where: { id: inv.id }, data: { accountingBatchId: batch.id } });
-      invoiceIds.push(inv.id);
-      invRows.push([
-        name,
-        inv.supplierName,
-        inv.supplierICO,
-        inv.invoiceNumber,
-        inv.variableSymbol,
-        inv.issueDate?.toISOString().slice(0, 10),
-        inv.dueDate?.toISOString().slice(0, 10),
-        inv.amountWithoutVat?.toString(),
-        inv.amountWithVat?.toString(),
-        inv.currency,
-      ]);
     } catch (e) {
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-
-  const payRows: unknown[][] = [];
   for (const p of c.payments) {
-    const name = uniqueName(
-      accountingFileName(p.counterpartyName, p.documentNumber, p.paymentDate, p.document.originalFilename),
-    );
+    const name = payNames.get(p.id)!;
     try {
       await copyDriveFileToFolder(p.driveFileId!, folders.paymentsFolderId, name);
       await prisma.paymentProof.update({ where: { id: p.id }, data: { accountingBatchId: batch.id } });
-      paymentIds.push(p.id);
-      payRows.push([
-        name,
-        p.counterpartyName,
-        p.documentNumber,
-        p.paymentDate?.toISOString().slice(0, 10),
-        p.amount?.toString(),
-        p.currency,
-      ]);
     } catch (e) {
       copyErrors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  if (invRows.length > 0) {
-    await uploadTextFileToFolder(
-      folders.invoicesFolderId,
-      "prehled-faktury.csv",
-      toCsv(
-        ["Soubor", "Dodavatel", "IČO", "Číslo faktury", "VS", "Vystaveno", "Splatnost", "Bez DPH", "S DPH", "Měna"],
-        invRows,
-      ),
-      "text/csv",
-    );
-  }
-  if (payRows.length > 0) {
-    await uploadTextFileToFolder(
-      folders.paymentsFolderId,
-      "prehled-platby.csv",
-      toCsv(["Soubor", "Obchodník", "Číslo dokladu", "Datum platby", "Částka", "Měna"], payRows),
-      "text/csv",
-    );
-  }
-
-  const share = await shareFolderWithEmails(folders.batchFolderId, emails);
-
-  await prisma.accountingBatch.update({
-    where: { id: batch.id },
-    data: {
-      invoiceCount: invoiceIds.length,
-      paymentCount: paymentIds.length,
-      sharedWith: share.shared.join(", ") || null,
-      shareError: share.errors.join("\n") || null,
-    },
-  });
-
+  const fin = await finalizeAccountingBatch(batch.id, input.userId);
   await writeAuditLog({
     entityType: "AccountingBatch",
     entityId: batch.id,
@@ -320,44 +310,100 @@ export async function createAccountingBatch(input: {
     action: "accounting_batch_created",
     metadata: {
       label,
-      invoiceCount: invoiceIds.length,
-      paymentCount: paymentIds.length,
+      invoiceCount: fin.invoiceCount,
+      paymentCount: fin.paymentCount,
       copyErrors: copyErrors.slice(0, 20),
-      shareErrors: share.errors,
+      shareErrors: fin.shareErrors,
+      overviewError: fin.overviewError,
     },
   });
-
-  return {
-    batchId: batch.id,
-    label,
-    invoicesFolderUrl: folders.invoicesFolderUrl,
-    paymentsFolderUrl: folders.paymentsFolderUrl,
-    invoiceCount: invoiceIds.length,
-    paymentCount: paymentIds.length,
-    sharedWith: share.shared,
-    shareErrors: share.errors,
-    copyErrors,
-    readyToSend: share.errors.length === 0 && copyErrors.length === 0,
-  };
+  return { ...fin, copyErrors, readyToSend: fin.readyToSend && copyErrors.length === 0 };
 }
 
-/** Opakované nasdílení složky dávky (když napoprvé selhalo). */
-export async function reshareAccountingBatch(batchId: string) {
+/** Přehledy CSV z celé dávky (přepíše) + nasdílení účetní. Opakovatelné. */
+export async function finalizeAccountingBatch(batchId: string, userId: string | null) {
+  void userId;
   const batch = await prisma.accountingBatch.findUnique({ where: { id: batchId } });
-  if (!batch?.invoicesFolderId) {
+  if (!batch) {
     throw new Error("Dávka nenalezena.");
   }
-  const emails = accountantEmails();
-  if (emails.length === 0) {
-    throw new Error("Chybí ACCOUNTANT_EMAILS.");
-  }
   const folders = await ensureAccountingBatchFolders(batch.label, batch.createdAt);
-  const share = await shareFolderWithEmails(folders.batchFolderId, emails);
+  const [invs, pays] = await batchItems(batchId);
+  const invNames = fileNamesFor<InvoiceForBatch>(invs, invName);
+  const payNames = fileNamesFor<PaymentForBatch>(pays, payName);
+
+  let overviewError: string | null = null;
+  try {
+    if (invs.length > 0) {
+      await upsertTextFileInFolder(
+        folders.invoicesFolderId,
+        "prehled-faktury.csv",
+        toCsv(
+          ["Soubor", "Dodavatel", "IČO", "Číslo faktury", "VS", "Vystaveno", "Splatnost", "Bez DPH", "S DPH", "Měna"],
+          invs
+            .map((i) => [
+              invNames.get(i.id),
+              i.supplierName,
+              i.supplierICO,
+              i.invoiceNumber,
+              i.variableSymbol,
+              i.issueDate?.toISOString().slice(0, 10),
+              i.dueDate?.toISOString().slice(0, 10),
+              i.amountWithoutVat?.toString(),
+              i.amountWithVat?.toString(),
+              i.currency,
+            ])
+            .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+        ),
+        "text/csv",
+      );
+    }
+    if (pays.length > 0) {
+      await upsertTextFileInFolder(
+        folders.paymentsFolderId,
+        "prehled-platby.csv",
+        toCsv(
+          ["Soubor", "Obchodník", "Číslo dokladu", "Datum platby", "Částka", "Měna"],
+          pays
+            .map((p) => [
+              payNames.get(p.id),
+              p.counterpartyName,
+              p.documentNumber,
+              p.paymentDate?.toISOString().slice(0, 10),
+              p.amount?.toString(),
+              p.currency,
+            ])
+            .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+        ),
+        "text/csv",
+      );
+    }
+  } catch (e) {
+    overviewError = e instanceof Error ? e.message : String(e);
+  }
+
+  const share = await shareFolderWithEmails(folders.batchFolderId, accountantEmails());
   await prisma.accountingBatch.update({
     where: { id: batchId },
-    data: { sharedWith: share.shared.join(", ") || null, shareError: share.errors.join("\n") || null },
+    data: {
+      invoiceCount: invs.length,
+      paymentCount: pays.length,
+      sharedWith: share.shared.join(", ") || null,
+      shareError: [...share.errors, ...(overviewError ? [`přehled: ${overviewError}`] : [])].join("\n") || null,
+    },
   });
-  return { sharedWith: share.shared, shareErrors: share.errors, readyToSend: share.errors.length === 0 };
+  return {
+    batchId,
+    label: batch.label,
+    invoicesFolderUrl: folders.invoicesFolderUrl,
+    paymentsFolderUrl: folders.paymentsFolderUrl,
+    invoiceCount: invs.length,
+    paymentCount: pays.length,
+    sharedWith: share.shared,
+    shareErrors: share.errors,
+    overviewError,
+    readyToSend: share.errors.length === 0 && overviewError === null && share.shared.length > 0,
+  };
 }
 
 export async function markAccountingBatchSent(batchId: string, sentTo: string, userId: string | null) {
