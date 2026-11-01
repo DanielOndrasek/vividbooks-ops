@@ -12,7 +12,6 @@ import {
   classificationHintFromFilename,
   documentNumberFromPaymentNote,
   isOwnCompanySupplier,
-  normalizeSupplierName,
 } from "@/lib/document-dedupe";
 import { prisma } from "@/lib/prisma";
 import { markDocumentDuplicate, recordFingerprint } from "@/services/document-dedupe-store";
@@ -77,7 +76,7 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
       currency: i.currency,
       filename: i.document.originalFilename,
       sender: i.document.email.senderEmail,
-      own: isOwnCompanySupplier(i.supplierICO, i.supplierDIC) || normalizeSupplierName(i.supplierName) === "vividbooks",
+      own: isOwnCompanySupplier(i.supplierICO, i.supplierDIC),
       key: buildDedupKey({
         supplierName: i.supplierName,
         supplierICO: i.supplierICO,
@@ -107,7 +106,7 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
       currency,
       filename: p.document.originalFilename,
       sender: p.document.email.senderEmail,
-      own: isOwnCompanySupplier(p.counterpartyICO, null) || normalizeSupplierName(supplier) === "vividbooks",
+      own: isOwnCompanySupplier(p.counterpartyICO, null),
       key: buildDedupKey({
         supplierName: supplier,
         supplierICO: p.counterpartyICO,
@@ -151,7 +150,10 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
       status: r.status,
       number: r.number,
       filename: r.filename,
-      action: r.status === "APPROVED" ? "ponechat (schválená)" : "smazat z evidence",
+      action:
+        r.type === "INVOICE" && r.status !== "APPROVED"
+          ? "smazat z evidence"
+          : "ponechat – rozhodne člověk (schválená faktura nebo uložená platba)",
     })),
     groups: duplicateGroups.map((g) => ({
       key: g.key,
@@ -193,8 +195,9 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
     }
   }
   // 3) vydané faktury VB (neschválené) pryč z evidence, stopa zůstane
-  for (const r of ownIssued) {
-    if (r.status === "APPROVED") continue;
+  // Automaticky mažeme jen neschválené FAKTURY s IČO/DIČ vlastní firmy; platby a schválené jen hlásíme.
+  const ownToDelete = ownIssued.filter((r) => r.type === "INVOICE" && r.status !== "APPROVED");
+  for (const r of ownToDelete) {
     await recordFingerprint({
       contentHash: r.contentHash,
       dedupKey: null,
@@ -218,7 +221,7 @@ export async function runDedupeBackfill(input: { apply: boolean; userId: string 
     entityId: "dedupe_backfill",
     userId: input.userId,
     action: "dedupe_backfill_applied",
-    metadata: { duplicatesMarked: dupIds.size, ownIssuedRemoved: ownIssued.filter((r) => r.status !== "APPROVED").length },
+    metadata: { duplicatesMarked: dupIds.size, ownIssuedRemoved: ownToDelete.length },
   });
   return { ...report, applied: true };
 }

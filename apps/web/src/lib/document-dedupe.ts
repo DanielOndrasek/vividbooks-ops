@@ -159,16 +159,12 @@ const NOISE_NAME = [
   /podpis|signature/i,
 ];
 
-/** Logo z podpisu, obchodní podmínky apod. — nestahovat, nedávat AI. */
+/**
+ * Logo z podpisu, obchodní podmínky apod. — nestahovat, nedávat AI.
+ * Jen podle názvu: malá fotka účtenky je pořád doklad (a e-mail se po zpracování znovu nenačte).
+ */
 export function isNoiseAttachment(att: AttachmentLike): boolean {
-  if (NOISE_NAME.some((re) => re.test(att.filename))) {
-    return true;
-  }
-  const isImage = att.mimeType.startsWith("image/");
-  if (isImage && att.size != null && att.size > 0 && att.size < 25_000) {
-    return true;
-  }
-  return false;
+  return NOISE_NAME.some((re) => re.test(att.filename));
 }
 
 /** „1a0b2efa11601e6c-Invoice-TUWHH68P-0005.pdf“ → { prefix: „1a0b2efa11601e6c-“, kind: „invoice“ } */

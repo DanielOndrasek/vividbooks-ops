@@ -72,8 +72,8 @@ function toCsv(header: string[], rows: unknown[][]): string {
   return "\ufeff" + [header, ...rows].map((r) => r.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }
 
-async function lastBatch() {
-  return prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
+async function firstBatch() {
+  return prisma.accountingBatch.findFirst({ orderBy: { periodFrom: "asc" } });
 }
 
 export type BatchCandidates = {
@@ -112,15 +112,17 @@ function loadPayments(from: Date, to: Date) {
 
 /** Co by šlo do dávky. První dávka potřebuje `since` (dřívější doklady účetní už má). */
 export async function collectBatchCandidates(since: Date | null, now = new Date()): Promise<BatchCandidates> {
-  const last = await lastBatch();
-  const from = last ? last.periodTo : since;
+  // Počátek = začátek úplně první dávky (ne konec minulé): doklad, jehož kopírování selhalo,
+  // zůstane bez accountingBatchId a dostane se do další dávky.
+  const first = await firstBatch();
+  const from = first ? first.periodFrom : since;
   if (!from) {
     throw new Error(
       "První dávka: zadejte „since“ (od kdy brát schválené faktury a doklady) — starší účetní už má.",
     );
   }
   const [invoices, payments] = await Promise.all([loadInvoices(from, now), loadPayments(from, now)]);
-  return { periodFrom: from, periodTo: now, firstBatch: !last, invoices, payments };
+  return { periodFrom: from, periodTo: now, firstBatch: !first, invoices, payments };
 }
 
 export function summarizeCandidates(c: BatchCandidates) {
@@ -187,6 +189,8 @@ export async function createAccountingBatch(input: {
   if (c.invoices.length === 0 && c.payments.length === 0) {
     throw new Error("Od minulé dávky nejsou žádné schválené faktury ani doklady k platbě.");
   }
+  const lastBatch = await prisma.accountingBatch.findFirst({ orderBy: { periodTo: "desc" } });
+  const periodFrom = lastBatch?.periodTo ?? c.periodFrom;
   const label = `${pragueDateIso(now)} týden ${isoWeek(now)}`;
   const folders = await ensureAccountingBatchFolders(label, now);
 
@@ -279,7 +283,7 @@ export async function createAccountingBatch(input: {
   const batch = await prisma.accountingBatch.create({
     data: {
       label,
-      periodFrom: c.periodFrom,
+      periodFrom,
       periodTo: c.periodTo,
       invoicesFolderId: folders.invoicesFolderId,
       invoicesFolderUrl: folders.invoicesFolderUrl,
