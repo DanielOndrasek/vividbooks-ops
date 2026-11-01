@@ -50,6 +50,8 @@ test("refund se neslije s účtenkou stejného čísla", () => {
 
 test("bez čísla dokladu není klíč", () => {
   assert.equal(buildDedupKey({ supplierName: "Zapier Inc.", documentNumber: null, amount: 27.42, currency: "EUR" }), null);
+  assert.equal(buildDedupKey({ supplierName: "Zapier Inc.", documentNumber: "INV-123", amount: null, currency: "EUR" }), null);
+  assert.equal(buildDedupKey({ supplierName: "Zapier Inc.", documentNumber: "INV-123", amount: 10, currency: null }), null);
 });
 
 test("vydané faktury Vividbooks", () => {

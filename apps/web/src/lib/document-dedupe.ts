@@ -101,7 +101,7 @@ export function isCreditLike(input: Pick<DedupInput, "amount" | "documentKind" |
 
 /**
  * Logický klíč dokladu: dodavatel | číslo | druh | částka měna.
- * Bez čísla dokladu vrací null (nelze spolehlivě porovnat — zbývá jen shoda souboru).
+ * Bez čísla dokladu, částky nebo měny vrací null (nelze spolehlivě porovnat — zbývá jen shoda souboru).
  * Dodavatele bereme podle jména (IČO u zahraničních chybí a AI ho občas doplní z DIČ),
  * částka v klíči chrání různé doklady se stejným číslem (zálohová vs. konečné vyúčtování).
  */
@@ -115,12 +115,16 @@ export function buildDedupKey(input: DedupInput): string | null {
   if (!sup) {
     return null;
   }
+  // Bez částky a měny duplicitu automaticky neurčujeme (dva neúplně přečtené doklady by splynuly).
+  if (input.amount == null || !Number.isFinite(input.amount)) {
+    return null;
+  }
+  const cur = (input.currency ?? "").trim().toUpperCase();
+  if (!cur) {
+    return null;
+  }
   const cls = isCreditLike(input) ? "CN" : "DOC";
-  const amt =
-    input.amount != null && Number.isFinite(input.amount)
-      ? Math.abs(input.amount).toFixed(2)
-      : "?";
-  const cur = (input.currency ?? "").trim().toUpperCase() || "?";
+  const amt = Math.abs(input.amount).toFixed(2);
   return `${sup}|${num}|${cls}|${amt}${cur}`;
 }
 

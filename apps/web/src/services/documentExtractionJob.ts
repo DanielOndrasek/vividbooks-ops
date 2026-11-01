@@ -335,7 +335,11 @@ async function processOneDocument(
   );
 
   // Vydané faktury Vividbooks (přeposlané z iDokladu) do evidence nepatří vůbec — smazat, nechat jen stopu.
-  if (isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC)) {
+  // Jen u FAKTUR; doklad k platbě s naším IČO jde normální cestou (rozhodne člověk).
+  if (
+    classification.type === "INVOICE" &&
+    isOwnCompanySupplier(extraction.supplierICO, extraction.supplierDIC)
+  ) {
     await recordFingerprint({
       contentHash: doc.contentHash,
       dedupKey: null,

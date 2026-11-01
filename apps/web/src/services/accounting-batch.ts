@@ -182,6 +182,7 @@ export type CreatedBatch = {
   shareErrors: string[];
   copyErrors: string[];
   overviewError: string | null;
+  missingItems: number;
   /** Agent smí poslat e-mail účetní jen když true (vše zkopírováno, přehled nahraný, nasdíleno). */
   readyToSend: boolean;
 };
@@ -383,6 +384,16 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
   }
 
   const share = await shareFolderWithEmails(folders.batchFolderId, accountantEmails());
+
+  // Úplnost: nezůstal do konce období dávky nějaký schválený doklad nezařazený (např. selhala kopie)?
+  let missingItems = 0;
+  try {
+    const rest = await collectBatchCandidates(batch.periodFrom, batch.periodTo);
+    missingItems = rest.invoices.length + rest.payments.length;
+  } catch {
+    missingItems = 0;
+  }
+
   await prisma.accountingBatch.update({
     where: { id: batchId },
     data: {
@@ -402,7 +413,10 @@ export async function finalizeAccountingBatch(batchId: string, userId: string | 
     sharedWith: share.shared,
     shareErrors: share.errors,
     overviewError,
-    readyToSend: share.errors.length === 0 && overviewError === null && share.shared.length > 0,
+    /** Doklady z období dávky, které v ní chybí — opakujte POST /api/agent/accounting-batch (doplní je). */
+    missingItems,
+    readyToSend:
+      share.errors.length === 0 && overviewError === null && share.shared.length > 0 && missingItems === 0,
   };
 }
 
