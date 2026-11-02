@@ -41,7 +41,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       documentType: "INVOICE",
       ...(statusFilter && STATUSES.includes(statusFilter)
         ? { status: statusFilter }
-        : {}),
+        : { status: { not: "DUPLICATE" } }),
     },
   };
   if (q) {

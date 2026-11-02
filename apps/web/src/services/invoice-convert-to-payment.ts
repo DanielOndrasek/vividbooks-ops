@@ -89,6 +89,7 @@ export async function convertInvoiceToPaymentProof(
           currency: invoice.currency,
           counterpartyName: invoice.supplierName,
           counterpartyICO: icoDigits,
+          documentNumber: invoice.invoiceNumber?.trim().slice(0, 120) || null,
           variableSymbol: invoice.variableSymbol?.replace(/\D/g, "") || null,
           constantSymbol: invoice.constantSymbol?.replace(/\D/g, "") || null,
           specificSymbol: invoice.specificSymbol?.replace(/\D/g, "") || null,

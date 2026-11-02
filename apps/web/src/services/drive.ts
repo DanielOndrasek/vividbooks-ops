@@ -533,3 +533,183 @@ export async function uploadApprovedInvoiceToDrive(
     return { ok: false, error: msg };
   }
 }
+
+/* ───────────────────────── Týdenní dávka pro účetní ───────────────────────── */
+
+/**
+ * Kořen pro dávky účetní: GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID, jinak složka „Pro účetní“
+ * vedle kořene faktur (stejný sdílený disk).
+ */
+async function accountingRootFolderId(drive: ReturnType<typeof getDrive>): Promise<string> {
+  const explicit = process.env.GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const invRoot = invoicesRootFolderId();
+  const meta = await drive.files.get({
+    fileId: invRoot,
+    fields: "parents,driveId",
+    supportsAllDrives: true,
+  });
+  const parent = meta.data.parents?.[0] ?? meta.data.driveId;
+  if (!parent) {
+    throw new Error("Nelze určit nadřazenou složku pro „Pro účetní“ — nastavte GOOGLE_DRIVE_ACCOUNTING_FOLDER_ID.");
+  }
+  const existing = await findChildFolder(drive, parent, "Pro účetní");
+  return existing ?? (await createFolder(drive, parent, "Pro účetní"));
+}
+
+async function folderWebViewLink(
+  drive: ReturnType<typeof getDrive>,
+  folderId: string,
+): Promise<string | null> {
+  const meta = await drive.files.get({
+    fileId: folderId,
+    fields: "webViewLink",
+    supportsAllDrives: true,
+  });
+  return meta.data.webViewLink ?? null;
+}
+
+export type AccountingFolders = {
+  batchFolderId: string;
+  invoicesFolderId: string;
+  invoicesFolderUrl: string | null;
+  paymentsFolderId: string;
+  paymentsFolderUrl: string | null;
+};
+
+/** Pro účetní / RRRR / <label> / {Faktury, Doklady k platbě} */
+export async function ensureAccountingBatchFolders(
+  label: string,
+  anchor: Date,
+): Promise<AccountingFolders> {
+  const drive = getDrive();
+  const root = await accountingRootFolderId(drive);
+  const { year } = ymFromDate(anchor);
+  const yId = (await findChildFolder(drive, root, year)) ?? (await createFolder(drive, root, year));
+  const bId = (await findChildFolder(drive, yId, label)) ?? (await createFolder(drive, yId, label));
+  const invId =
+    (await findChildFolder(drive, bId, "Faktury")) ?? (await createFolder(drive, bId, "Faktury"));
+  const payId =
+    (await findChildFolder(drive, bId, "Doklady k platbě")) ??
+    (await createFolder(drive, bId, "Doklady k platbě"));
+  return {
+    batchFolderId: bId,
+    invoicesFolderId: invId,
+    invoicesFolderUrl: await folderWebViewLink(drive, invId),
+    paymentsFolderId: payId,
+    paymentsFolderUrl: await folderWebViewLink(drive, payId),
+  };
+}
+
+/**
+ * Kopie souboru z evidence do složky dávky (originál zůstává v RRRR/MM).
+ * Kopie nese `appProperties.sourceFileId` → opakovaný běh pozná svoji kopii a nevytvoří druhou;
+ * jiný doklad se stejným jménem dostane příponu s kouskem ID. Vrací skutečné jméno kopie.
+ */
+export async function copyDriveFileToFolder(
+  fileId: string,
+  folderId: string,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const drive = getDrive();
+  const base = safeFileName(name);
+  const candidates = [base, base.replace(/(\.[A-Za-z0-9]+)?$/, (ext) => `_${fileId.slice(-6)}${ext}`)];
+  for (const candidate of candidates) {
+    const existing = await drive.files.list({
+      q: `'${folderId}' in parents and name = '${escapeQueryName(candidate)}' and trashed = false`,
+      fields: "files(id,appProperties)",
+      pageSize: 5,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const files = existing.data.files ?? [];
+    const mine = files.find((f) => f.appProperties?.sourceFileId === fileId);
+    if (mine?.id) {
+      return { id: mine.id, name: candidate };
+    }
+    if (files.length > 0) {
+      continue; // jméno drží jiný doklad → zkusit jméno s příponou
+    }
+    const res = await drive.files.copy({
+      fileId,
+      supportsAllDrives: true,
+      requestBody: { name: candidate, parents: [folderId], appProperties: { sourceFileId: fileId } },
+      fields: "id",
+    });
+    return { id: res.data.id!, name: candidate };
+  }
+  throw new Error(`Jméno „${base}“ je ve složce dávky obsazené jiným dokladem.`);
+}
+
+/** Nahraje textový soubor; když už ve složce soubor stejného jména je, přepíše jeho obsah (opakovatelné). */
+export async function upsertTextFileInFolder(
+  folderId: string,
+  name: string,
+  content: string,
+  mimeType: string,
+): Promise<void> {
+  const drive = getDrive();
+  const q = `'${folderId}' in parents and name = '${escapeQueryName(name)}' and trashed = false`;
+  const res = await drive.files.list({
+    q,
+    fields: "files(id)",
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existingId = res.data.files?.[0]?.id;
+  const body = Buffer.from(content, "utf8");
+  if (existingId) {
+    await drive.files.update({
+      fileId: existingId,
+      supportsAllDrives: true,
+      media: { mimeType, body: Readable.from(body) },
+    });
+    return;
+  }
+  await uploadBufferToFolder(drive, folderId, name, body, mimeType);
+}
+
+/** Přístup ke složce (čtení) pro účetní — bez notifikačního e-mailu, odkaz pošle agent. */
+export async function shareFolderWithEmails(
+  folderId: string,
+  emails: string[],
+): Promise<{ shared: string[]; errors: string[] }> {
+  const drive = getDrive();
+  const shared: string[] = [];
+  const errors: string[] = [];
+  // Opakované dokončení dávky: kdo už přístup má, se počítá jako úspěch.
+  const already = new Set<string>();
+  try {
+    const perms = await drive.permissions.list({
+      fileId: folderId,
+      supportsAllDrives: true,
+      fields: "permissions(emailAddress)",
+    });
+    for (const p of perms.data.permissions ?? []) {
+      if (p.emailAddress) already.add(p.emailAddress.toLowerCase());
+    }
+  } catch {
+    /* seznam není nutný — zkusíme rovnou vytvořit */
+  }
+  for (const email of emails) {
+    if (already.has(email.toLowerCase())) {
+      shared.push(email);
+      continue;
+    }
+    try {
+      await drive.permissions.create({
+        fileId: folderId,
+        supportsAllDrives: true,
+        sendNotificationEmail: false,
+        requestBody: { type: "user", role: "reader", emailAddress: email },
+      });
+      shared.push(email);
+    } catch (e) {
+      errors.push(`${email}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { shared, errors };
+}
