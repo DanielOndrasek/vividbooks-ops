@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { useConfirmDialog } from "@/components/confirm-dialog";
+import { MarkDuplicateButton } from "@/components/mark-duplicate-button";
 import { Button } from "@/components/ui/button";
 import { errorMessageFromUnknown, readFetchJson } from "@/lib/api-json";
 
@@ -636,6 +637,9 @@ export function InvoicesListTable({ rows, canAct }: Props) {
                             "Smazat"
                           )}
                         </Button>
+                      ) : null}
+                      {inv.canDeleteDocument ? (
+                        <MarkDuplicateButton documentId={inv.documentId} />
                       ) : (
                         <span
                           className="text-muted-foreground text-xs"

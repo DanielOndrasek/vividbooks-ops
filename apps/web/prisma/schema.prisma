@@ -39,6 +39,8 @@ enum DocumentStatus {
   RECEIVED
   STORED
   ERROR
+  /// Stejný doklad už v evidenci je (shoda souboru nebo dodavatel + číslo + částka). Neukazuje se v seznamech.
+  DUPLICATE
 }
 
 /// Stav odeslání dokladu do POHODY (mServer / XML).
@@ -180,6 +182,10 @@ model Document {
   localFilePath             String?
   aiRawResponse             String?        @db.Text
   needsManualReview         Boolean        @default(false)
+  /// Logický klíč dokladu (dodavatel | číslo | druh | částka) — pro hledání duplicit.
+  dedupKey                  String?
+  /// U stavu DUPLICATE: dokument, který v evidenci zůstal (bez cizího klíče — originál může být promazán).
+  duplicateOfDocumentId     String?
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
@@ -188,6 +194,7 @@ model Document {
 
   @@unique([emailId, gmailAttachmentId])
   @@unique([contentHash])
+  @@index([dedupKey])
   @@index([status])
   @@index([documentType])
 }
@@ -238,9 +245,16 @@ model Invoice {
   pohodaExternalId      String?
   pohodaExportLastError String?            @db.Text
 
+  /// Týdenní dávka pro účetní, ve které faktura odešla.
+  accountingBatchId String?
+  /// Jméno kopie ve složce dávky (pevné — přehled CSV na něj odkazuje).
+  accountingFileName String?
+  accountingBatch   AccountingBatch? @relation(fields: [accountingBatchId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([accountingBatchId])
   @@index([dueDate])
   @@index([supplierName])
   @@index([approvedAt])
@@ -268,16 +282,68 @@ model PaymentProof {
   bankMessage      String?   @db.Text
   bankAccountNo    String?
   bankCode         String?
+  /// Číslo dokladu / faktury, ke které se platba vztahuje (pro hledání duplicit).
+  documentNumber   String?
 
   pohodaExportStatus    PohodaExportStatus @default(NONE)
   pohodaExportedAt      DateTime?
   pohodaExternalId      String?
   pohodaExportLastError String?            @db.Text
 
+  accountingBatchId  String?
+  accountingFileName String?
+  accountingBatch    AccountingBatch? @relation(fields: [accountingBatchId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([pohodaExportStatus])
+  @@index([accountingBatchId])
+}
+
+/// Trvalá stopa zpracovaného dokladu — přežije promazání faktur z DB, aby se duplicita poznala i po měsících.
+model DocumentFingerprint {
+  id            String       @id @default(cuid())
+  /// SHA-256 souboru (přílohy).
+  contentHash   String?      @unique
+  /// Logický klíč (viz Document.dedupKey).
+  dedupKey      String?
+  documentType  DocumentType
+  /// kept | duplicate | own_issued
+  outcome       String
+  documentId    String?
+  supplierName  String?
+  documentNumber String?
+  createdAt     DateTime     @default(now())
+
+  @@index([dedupKey])
+  @@index([documentId])
+}
+
+/// Týdenní dávka dokladů pro účetní (složky na Google Disku + odkazy do e-mailu).
+model AccountingBatch {
+  id                  String    @id @default(cuid())
+  label               String    @unique
+  periodFrom          DateTime
+  periodTo            DateTime
+  invoicesFolderId    String?
+  invoicesFolderUrl   String?
+  paymentsFolderId    String?
+  paymentsFolderUrl   String?
+  invoiceCount        Int       @default(0)
+  paymentCount        Int       @default(0)
+  sharedWith          String?
+  shareError          String?   @db.Text
+  createdByUserId     String?
+  createdAt           DateTime  @default(now())
+  /// Kdy agent odeslal e-mail účetní (po potvrzení Danem).
+  sentAt              DateTime?
+  sentTo              String?
+
+  invoices      Invoice[]
+  paymentProofs PaymentProof[]
+
+  @@index([createdAt])
 }
 
 model AuditLog {

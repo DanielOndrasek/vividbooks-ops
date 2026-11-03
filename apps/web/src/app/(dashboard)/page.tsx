@@ -277,6 +277,7 @@ export default async function DashboardPage() {
     monthDocs = await prisma.document.findMany({
       where: {
         createdAt: { gte: monthStart, lt: nextMonthStart },
+        status: { not: "DUPLICATE" },
         documentType: {
           in: [DocumentType.INVOICE, DocumentType.PAYMENT_RECEIPT],
         },

@@ -8,7 +8,7 @@
     "build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/lib/inventory/eshop-prices.test.ts",
+    "test": "node --test src/lib/inventory/eshop-prices.test.ts \"tests/*.test.mjs\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
