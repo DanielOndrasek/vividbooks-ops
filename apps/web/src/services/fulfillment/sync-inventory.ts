@@ -6,6 +6,8 @@ import {
 } from "@/lib/inventory/excluded-codes";
 import { getFulfillmentEnv } from "@/lib/integrations/fulfillment-env";
 import { prisma } from "@/lib/prisma";
+import { lookupEshopPrice, resolveUnitPrice } from "@/lib/inventory/eshop-prices";
+import { fetchEshopPriceIndex } from "@/services/fulfillment/eshop-prices";
 import {
   fetchAllProducts,
   fetchAllWarehouseVariants,
@@ -164,6 +166,12 @@ export async function runFulfillmentInventorySync(opts?: {
   }
 
   const metaByCode = buildVariantMetaByCode(products);
+  // Skladová cena = prodejní cena z e-shopu (Kč s DPH); bez ní se existující ceny nemění.
+  const { index: eshopIndex, warning: eshopWarning } = await fetchEshopPriceIndex();
+  if (eshopWarning) {
+    console.warn(`[fulfillment-sync] ${eshopWarning}`);
+  }
+  let priceUpdates = 0;
   result.ok = true;
   result.fetchedVariants = warehouseVariants.length;
 
@@ -187,14 +195,17 @@ export async function runFulfillmentInventorySync(opts?: {
       wv.available_quantity != null ? new Prisma.Decimal(wv.available_quantity) : null;
     const reservedQuantity =
       wv.reserved_quantity != null ? new Prisma.Decimal(wv.reserved_quantity) : null;
-    const unitPrice =
-      wv.price_per_unit != null
-        ? new Prisma.Decimal(wv.price_per_unit)
-        : meta?.priceRetail != null
-          ? new Prisma.Decimal(meta.priceRetail)
-          : meta?.pricePurchase != null
-            ? new Prisma.Decimal(meta.pricePurchase)
-            : null;
+    const eshopPrice = lookupEshopPrice(eshopIndex, {
+      skus: [extCode, code],
+      isbns: [extCode, code],
+    });
+    // Pořadí: e-shop → priceRetail → price_per_unit (Fulfillment, nespolehlivé; jen pro nové položky).
+    const resolved = resolveUnitPrice({
+      eshop: eshopPrice,
+      priceRetail: meta?.priceRetail,
+      pricePerUnit: wv.price_per_unit,
+    });
+    const unitPrice = resolved.value != null ? new Prisma.Decimal(resolved.value) : null;
 
     try {
       const existing = await prisma.inventoryItem.findUnique({
@@ -244,13 +255,16 @@ export async function runFulfillmentInventorySync(opts?: {
             quantity,
             availableQuantity,
             reservedQuantity,
-            // Jednotkovou cenu (unitPrice) záměrně nepřepisujeme cenou z Fulfillmentu —
-            // ta odpovídá nákupní/skladové ceně, ne prodejní ceně e-shopu. Prodejní ceny
-            // se nastavují ručně (viz seznam_produktu_a_cen.md) a synchronizace je nemá mazat.
+            // Cenu z Fulfillmentu nikdy nepřepisujeme (nesmyslné hodnoty); přepíše ji jen
+            // prodejní cena z e-shopu, když je k položce spárovaná.
+            ...(eshopPrice != null ? { unitPrice: new Prisma.Decimal(eshopPrice) } : {}),
             lastSyncedAt: new Date(),
             active: true,
           },
         });
+        if (eshopPrice != null && (existing.unitPrice == null || !existing.unitPrice.equals(unitPrice!))) {
+          priceUpdates += 1;
+        }
         if (qtyChanged) {
           await prisma.inventoryMovement.create({
             data: {
@@ -282,6 +296,8 @@ export async function runFulfillmentInventorySync(opts?: {
     movementsRecorded: result.movementsRecorded,
     skipped: result.skipped,
     excluded: result.excluded,
+    priceUpdatesFromEshop: priceUpdates,
+    eshopPricesAvailable: eshopIndex != null,
   });
 
   return result;
