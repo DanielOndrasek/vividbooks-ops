@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
       remaining: r.remainingAi,
       stoppedEarly: true,
     };
+    // Selhání stahování pošty nesmí projít jako úspěch: AI už v tomto volání proběhla, ale
+    // workflow dostane chybový status a běh v GitHub Actions zčervená (jinak by se o výpadku
+    // Gmailu nikdo nedozvěděl). Další hodinový běh to zkusí znovu.
     return NextResponse.json({
+      ...(r.mailError ? { error: `Stažení pošty selhalo: ${r.mailError}` } : {}),
       ...ai,
       remaining: r.remainingAi,
       mail: r.mail
@@ -77,7 +81,7 @@ export async function GET(req: NextRequest) {
           }
         : null,
       mailError: r.mailError,
-    });
+    }, { status: r.mailError ? 502 : 200 });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
