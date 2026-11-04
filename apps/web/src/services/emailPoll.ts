@@ -15,6 +15,7 @@ import {
   buildUnprocessedQuery,
   downloadAttachment,
   fetchUnprocessedMessageIds,
+  fetchUnprocessedMessagePage,
   getGmailClient,
   listEligibleAttachments,
   markAsProcessed,
@@ -248,7 +249,7 @@ export async function runEmailPoll(opts: EmailPollOptions = {}): Promise<EmailPo
 
   try {
     const drain = await drainMessages({
-      listIds: () => fetchUnprocessedMessageIds(gmail),
+      listPage: (pageToken) => fetchUnprocessedMessagePage(gmail, pageToken),
       handle: handleMessage,
       deadline,
     });

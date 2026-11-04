@@ -4,13 +4,21 @@ import { test } from "node:test";
 
 import { drainMessages } from "../src/lib/mail-drain.ts";
 
-/** Falešná schránka: zpracovaná zpráva zmizí ze seznamu (jako po štítku Zpracováno). */
+/**
+ * Falešná schránka jako Gmail: dotaz vrací nezpracované po stránkách (pageSize), token = offset.
+ * Zpracovaná zpráva zmizí (štítek Zpracováno), `sticky` zprávy štítek nedostanou a zůstávají.
+ */
 function fakeInbox(ids, pageSize, { sticky = [] } = {}) {
   const pending = [...ids];
   return {
-    listIds: async () => pending.slice(0, pageSize),
+    listPage: async (token) => {
+      const from = token ? Number(token) : 0;
+      const page = pending.slice(from, from + pageSize);
+      const next = from + pageSize < pending.length ? String(from + pageSize) : undefined;
+      return { ids: page, nextPageToken: next };
+    },
     handle: async (id) => {
-      if (sticky.includes(id)) return; // štítek se nepřidal → zůstane v seznamu
+      if (sticky.includes(id)) return;
       pending.splice(pending.indexOf(id), 1);
     },
     pending,
@@ -39,10 +47,20 @@ test("zpráva bez štítku se nezpracuje dvakrát a smyčka skončí", async () 
     calls += 1;
     await box.handle(id);
   };
-  const r = await drainMessages({ listIds: box.listIds, handle, deadline: Infinity });
+  const r = await drainMessages({ listPage: box.listPage, handle, deadline: Infinity });
   assert.equal(calls, 3);
   assert.deepEqual(r.stuck, ["b"]);
   assert.equal(r.stoppedEarly, false);
+});
+
+test("zaseknuté zprávy zaplní první stránku → pošta za nimi se přesto stáhne", async () => {
+  const sticky = ["s1", "s2", "s3"];
+  const box = fakeInbox([...sticky, "f1", "f2"], 3, { sticky });
+  const r = await drainMessages({ ...box, deadline: Infinity });
+  assert.deepEqual([...r.handled].sort(), ["f1", "f2", "s1", "s2", "s3"]);
+  assert.deepEqual([...r.stuck].sort(), sticky);
+  assert.equal(r.stoppedEarly, false);
+  assert.deepEqual(box.pending, sticky);
 });
 
 test("po termínu nezačne další zprávu a hlásí stoppedEarly", async () => {
@@ -52,8 +70,8 @@ test("po termínu nezačne další zprávu a hlásí stoppedEarly", async () => 
     t += 10; // každá zpráva 10 ms
     await box.handle(id);
   };
-  const r = await drainMessages({ listIds: box.listIds, handle, deadline: 25, now: () => t });
-  // a (0→10), b (10→20, nejpomalejší 10 → 20+10 ≥ 25 stop)
+  const r = await drainMessages({ listPage: box.listPage, handle, deadline: 25, now: () => t });
+  // a (0→10), b (10→20); nejpomalejší 10 ms → 20+10 ≥ 25 → stop
   assert.deepEqual(r.handled, ["a", "b"]);
   assert.equal(r.stoppedEarly, true);
 });
@@ -62,7 +80,7 @@ test("chyba při zpracování se propaguje", async () => {
   const box = fakeInbox(["a"], 25);
   await assert.rejects(
     drainMessages({
-      listIds: box.listIds,
+      listPage: box.listPage,
       handle: async () => {
         throw new Error("Gmail 500");
       },
