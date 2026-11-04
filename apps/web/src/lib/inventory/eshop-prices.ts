@@ -110,3 +110,16 @@ export function resolveUnitPrice(args: {
   if (args.pricePerUnit != null) return { value: args.pricePerUnit, source: "pricePerUnit" };
   return { value: null, source: null };
 }
+
+/** Klíče párování položky skladu: SKU = ext_code, code; ISBN = ISBN, EAN, ext_code, code. */
+export function eshopMatchKeys(item: {
+  extCode?: string | null;
+  code?: string | null;
+  ean?: string | null;
+  isbn?: string | null;
+}): { skus: Array<string | null | undefined>; isbns: Array<string | null | undefined> } {
+  return {
+    skus: [item.extCode, item.code],
+    isbns: [item.isbn, item.ean, item.extCode, item.code],
+  };
+}
