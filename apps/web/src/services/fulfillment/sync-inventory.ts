@@ -6,7 +6,7 @@ import {
 } from "@/lib/inventory/excluded-codes";
 import { getFulfillmentEnv } from "@/lib/integrations/fulfillment-env";
 import { prisma } from "@/lib/prisma";
-import { lookupEshopPrice, resolveUnitPrice } from "@/lib/inventory/eshop-prices";
+import { eshopMatchKeys, lookupEshopPrice, resolveUnitPrice } from "@/lib/inventory/eshop-prices";
 import { fetchEshopPriceIndex } from "@/services/fulfillment/eshop-prices";
 import {
   fetchAllProducts,
@@ -32,6 +32,7 @@ type VariantMeta = {
   productName: string;
   variantName: string | null;
   priceRetail: number | null;
+  ean: string | null;
   pricePurchase: number | null;
 };
 
@@ -52,6 +53,7 @@ function buildVariantMetaByCode(
         productName,
         variantName: variant.name?.trim() || null,
         priceRetail: variant.price_retail ?? null,
+        ean: variant.ean?.trim() || null,
         pricePurchase: variant.price_purchase ?? null,
       });
     }
@@ -195,10 +197,11 @@ export async function runFulfillmentInventorySync(opts?: {
       wv.available_quantity != null ? new Prisma.Decimal(wv.available_quantity) : null;
     const reservedQuantity =
       wv.reserved_quantity != null ? new Prisma.Decimal(wv.reserved_quantity) : null;
-    const eshopPrice = lookupEshopPrice(eshopIndex, {
-      skus: [extCode, code],
-      isbns: [extCode, code],
-    });
+    // Záložní párování podle ISBN: ext_code/code i samostatné EAN/ISBN varianty z Fulfillmentu.
+    const eshopPrice = lookupEshopPrice(
+      eshopIndex,
+      eshopMatchKeys({ extCode, code, ean: meta?.ean }),
+    );
     // Pořadí: e-shop → priceRetail → price_per_unit (Fulfillment, nespolehlivé; jen pro nové položky).
     const resolved = resolveUnitPrice({
       eshop: eshopPrice,

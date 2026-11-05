@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildEshopPriceIndex,
+  eshopMatchKeys,
   extractProducts,
   lookupEshopPrice,
   parsePriceTextToKc,
@@ -66,4 +67,14 @@ test("resolveUnitPrice: e-shop → priceRetail → price_per_unit", () => {
     value: null,
     source: null,
   });
+});
+
+test("eshopMatchKeys: samostatné EAN/ISBN varianty spáruje s e-shopem", () => {
+  const idx = buildEshopPriceIndex(products);
+  assert.equal(
+    lookupEshopPrice(idx, eshopMatchKeys({ extCode: "x", code: "y", ean: "978-80-7603-001-1" })),
+    1190,
+  );
+  assert.equal(lookupEshopPrice(idx, eshopMatchKeys({ extCode: "9788076030011" })), 1190);
+  assert.equal(lookupEshopPrice(idx, eshopMatchKeys({ extCode: "x", ean: null })), null);
 });
