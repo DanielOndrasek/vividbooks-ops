@@ -72,7 +72,7 @@ async function failStaleExtractionJobs(): Promise<void> {
   });
 }
 
-function queueCount(): Promise<number> {
+export function queueCount(): Promise<number> {
   return prisma.document.count({
     where: { status: "NEW", documentType: "UNCLASSIFIED" },
   });
@@ -155,7 +155,14 @@ export type DocumentExtractionJobResult = {
   skippedReason?: "already_running";
 };
 
-export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobResult> {
+export type DocumentExtractionOptions = {
+  /** Přepíše AI_JOB_TIME_BUDGET_MS (např. když část limitu funkce už spotřebovalo stahování pošty). */
+  budgetMs?: number;
+};
+
+export async function runDocumentExtractionJob(
+  opts: DocumentExtractionOptions = {},
+): Promise<DocumentExtractionJobResult> {
   await failStaleExtractionJobs();
 
   const running = await prisma.processingJob.findFirst({
@@ -186,7 +193,7 @@ export async function runDocumentExtractionJob(): Promise<DocumentExtractionJobR
     include: { email: true },
   });
 
-  const budgetMs = timeBudgetMs();
+  const budgetMs = opts.budgetMs ?? timeBudgetMs();
   const startedAt = Date.now();
 
   const job = await prisma.processingJob.create({

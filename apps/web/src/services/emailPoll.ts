@@ -9,11 +9,13 @@ import type { gmail_v1 } from "googleapis";
 import { writeAuditLog } from "@/lib/audit";
 import { isNoiseAttachment } from "@/lib/document-dedupe";
 import { gmailOnlyUnread } from "@/lib/gmail-config";
+import { drainMessages } from "@/lib/mail-drain";
 import { prisma } from "@/lib/prisma";
 import {
   buildUnprocessedQuery,
   downloadAttachment,
   fetchUnprocessedMessageIds,
+  fetchUnprocessedMessagePage,
   getGmailClient,
   listEligibleAttachments,
   markAsProcessed,
@@ -44,7 +46,25 @@ export type EmailPollResult = {
   queryUsed: string;
   /** When true, only unread messages match — read mail won’t reappear after removing „Zpracováno“ only. */
   onlyUnread: boolean;
+  /** Kolik nezpracovaných zpráv po běhu zbývá ve schránce (max. jedna stránka Gmailu). 0 = vše stažené. */
+  remainingMail: number;
+  /** True = běh skončil kvůli času, ne kvůli prázdné schránce. */
+  stoppedEarly: boolean;
+  /** Zprávy, kterým se nepodařilo přidat štítek Zpracováno (zůstávají ve schránce). */
+  stuckMessageIds: string[];
+  /** Kolikrát se ptal Gmailu na další stránku. */
+  passes: number;
 };
+
+export type EmailPollOptions = {
+  /** Kolik času má stahování (ms). Výchozí GMAIL_POLL_TIME_BUDGET_MS nebo 200 s (limit funkce 300 s). */
+  budgetMs?: number;
+};
+
+function pollBudgetMs(): number {
+  const n = Number(process.env.GMAIL_POLL_TIME_BUDGET_MS);
+  return Number.isFinite(n) && n >= 10_000 && n <= 280_000 ? Math.floor(n) : 200_000;
+}
 
 function sha256(buf: Buffer): string {
   return createHash("sha256").update(buf).digest("hex");
@@ -65,15 +85,17 @@ async function fetchFullMessage(
   return res.data;
 }
 
-export async function runEmailPoll(): Promise<EmailPollResult> {
+export async function runEmailPoll(opts: EmailPollOptions = {}): Promise<EmailPollResult> {
   const gmail = getGmailClient();
-  const messageIds = await fetchUnprocessedMessageIds(gmail);
+  const deadline = Date.now() + (opts.budgetMs ?? pollBudgetMs());
+  /** Zpracované zprávy tohoto běhu (Gmail se ptá po stránkách, dokud něco přibývá). */
+  const messageIds: string[] = [];
 
   const job = await prisma.processingJob.create({
     data: {
       type: "email_fetch",
       status: "processing",
-      metadata: { messageIds, query: buildUnprocessedQuery() },
+      metadata: { query: buildUnprocessedQuery() },
     },
   });
 
@@ -92,8 +114,8 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
     skippedFiltered: string[];
   }> = [];
 
-  try {
-    for (const messageId of messageIds) {
+  const handleMessage = async (messageId: string): Promise<void> => {
+      messageIds.push(messageId);
       const message = await fetchFullMessage(gmail, messageId);
       const attachments = listEligibleAttachments(message);
       const meta = parseMessageMeta(message);
@@ -223,7 +245,17 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       });
 
       await markAsProcessed(gmail, messageId);
-    }
+  };
+
+  try {
+    const drain = await drainMessages({
+      listPage: (pageToken) => fetchUnprocessedMessagePage(gmail, pageToken),
+      handle: handleMessage,
+      deadline,
+    });
+    const remainingMail = drain.stoppedEarly
+      ? (await fetchUnprocessedMessageIds(gmail)).length
+      : drain.stuck.length;
 
     await prisma.processingJob.update({
       where: { id: job.id },
@@ -238,6 +270,10 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
           skippedDuplicates,
           skippedFiltered,
           perMessage,
+          remainingMail,
+          stoppedEarly: drain.stoppedEarly,
+          stuckMessageIds: drain.stuck,
+          passes: drain.passes,
         },
       },
     });
@@ -251,6 +287,10 @@ export async function runEmailPoll(): Promise<EmailPollResult> {
       perMessage,
       queryUsed: buildUnprocessedQuery(),
       onlyUnread: gmailOnlyUnread(),
+      remainingMail,
+      stoppedEarly: drain.stoppedEarly,
+      stuckMessageIds: drain.stuck,
+      passes: drain.passes,
     };
   } catch (err) {
     await prisma.processingJob.update({

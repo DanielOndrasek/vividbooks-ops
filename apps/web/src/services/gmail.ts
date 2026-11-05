@@ -126,17 +126,29 @@ export async function ensureLabelExists(
   return created.data.id;
 }
 
-/** ID zpráv k načtení (stručný list). */
-export async function fetchUnprocessedMessageIds(gmail: gmail_v1.Gmail): Promise<string[]> {
+/** Jedna stránka ID zpráv k načtení (stručný list) + token další stránky. */
+export async function fetchUnprocessedMessagePage(
+  gmail: gmail_v1.Gmail,
+  pageToken?: string,
+): Promise<{ ids: string[]; nextPageToken?: string }> {
   const q = buildUnprocessedQuery();
   const max = gmailPollMaxResults();
   const res = await gmail.users.messages.list({
     userId: "me",
     q,
     maxResults: max,
+    ...(pageToken ? { pageToken } : {}),
   });
   const messages = res.data.messages ?? [];
-  return messages.map((m) => m.id).filter((id): id is string => Boolean(id));
+  return {
+    ids: messages.map((m) => m.id).filter((id): id is string => Boolean(id)),
+    nextPageToken: res.data.nextPageToken ?? undefined,
+  };
+}
+
+/** ID zpráv k načtení (první stránka). */
+export async function fetchUnprocessedMessageIds(gmail: gmail_v1.Gmail): Promise<string[]> {
+  return (await fetchUnprocessedMessagePage(gmail)).ids;
 }
 
 function getHeader(

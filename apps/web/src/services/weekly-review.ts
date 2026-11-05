@@ -135,8 +135,28 @@ export async function buildWeeklyReview(since: Date | null) {
     batchPreviewError = e instanceof Error ? e.message : String(e);
   }
 
+  // Stav načítání pošty: agent před schvalováním volá POST /api/agent/sync, tady je kontrola,
+  // jestli v aplikaci něco nečeká (bez dotazu na Gmail — ten dělá sync).
+  const [aiQueue, lastMailFetch] = await Promise.all([
+    prisma.document.count({ where: { status: DocumentStatus.NEW, documentType: "UNCLASSIFIED" } }),
+    prisma.processingJob.findFirst({
+      where: { type: "email_fetch", status: "completed" },
+      orderBy: { createdAt: "desc" },
+      select: { completedAt: true, metadata: true },
+    }),
+  ]);
+  const lastMailMeta = (lastMailFetch?.metadata ?? {}) as { remainingMail?: number };
+
   return {
     generatedAt: now.toISOString(),
+    inbox: {
+      lastMailFetchAt: lastMailFetch?.completedAt?.toISOString() ?? null,
+      /** Nezpracovaná pošta po posledním stažení (null = starší běh, který to neměřil). */
+      remainingMailAfterLastFetch:
+        typeof lastMailMeta.remainingMail === "number" ? lastMailMeta.remainingMail : null,
+      /** Stažené doklady, které ještě nezpracovala AI (v pendingInvoices zatím nejsou). */
+      aiQueue,
+    },
     appUrl: appUrl(),
     lastBatch: lastBatch
       ? {
