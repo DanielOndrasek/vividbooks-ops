@@ -22,6 +22,10 @@ export function InventoryValueHistory({ snapshots }: { snapshots: SnapshotDto[] 
     <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
       <div className="border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-5">
         <h2 className="text-base font-semibold tracking-tight">Hodnota skladu po měsících</h2>
+        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+          Prodejní hodnota = stav × prodejní cena z e-shopu (s DPH). Výrobní náklady = kusy (kartony ×N) ×
+          průměrná nákupní cena podle faktur tiskárny GRASPO (bez DPH); neoceněné kusy se do nich nepočítají.
+        </p>
         <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
           Snímek se ukládá denně; měsíc se uzavře prvním během v dalším měsíci. Starší měsíce označené „dopočteno“
           jsou odhad z pohybů skladu při dnešních cenách.
@@ -36,6 +40,20 @@ export function InventoryValueHistory({ snapshots }: { snapshots: SnapshotDto[] 
             </span>
             <span className="w-44 shrink-0 text-right tabular-nums">
               {fmtMoney(s.value)} <span className="text-muted-foreground text-xs">{s.currency}</span>
+              <span className="text-muted-foreground block text-[11px]">prodejní, s DPH</span>
+            </span>
+            <span className="w-44 shrink-0 text-right tabular-nums">
+              {s.productionCost != null ? (
+                <>
+                  {fmtMoney(s.productionCost)} <span className="text-muted-foreground text-xs">CZK</span>
+                  <span className="text-muted-foreground block text-[11px]">
+                    výrobní, bez DPH
+                    {s.unpricedQuantity ? ` · neoceněno ${s.unpricedQuantity.toLocaleString("cs-CZ")} ks` : ""}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
             </span>
             <span className="text-muted-foreground w-24 shrink-0 text-right text-xs">
               {s.final ? "uzavřeno" : "průběžně"}

@@ -1,4 +1,4 @@
-import { valueByCurrency as valueByCurrencyOf } from "./value";
+import { computeProductionCost, valueByCurrency as valueByCurrencyOf } from "./value";
 
 export type StockStatus = "ok" | "low" | "out";
 
@@ -16,6 +16,10 @@ export type InventoryItemDto = {
   quantity: number;
   minQuantity: number | null;
   unitPrice: number | null;
+  /** Výrobní cena za 1 kus (Kč bez DPH, průměr faktur tiskárny) nebo null = neoceněno. */
+  productionUnitCost: number | null;
+  /** Kusů v jedné jednotce položky (`-C10` = 10). */
+  packSize: number;
   currency: string;
   location: string | null;
   supplier: string | null;
@@ -51,6 +55,10 @@ export type InventorySummary = {
   outOfStockCount: number;
   /** Celková hodnota skladu po měnách (jen aktivní položky s jednotkovou cenou). */
   valueByCurrency: Record<string, number>;
+  /** Výrobní náklady (Kč bez DPH): kusy × průměrná nákupní cena. */
+  productionCost: number;
+  /** Kusy bez výrobní ceny (neoceněno). */
+  unpricedQuantity: number;
 };
 
 /**
@@ -92,11 +100,14 @@ export function buildInventorySummary(items: InventoryItemDto[]): InventorySumma
     }
   }
 
+  const production = computeProductionCost(items);
   return {
     totalItems: items.length,
     activeItems,
     lowStockCount,
     outOfStockCount,
     valueByCurrency,
+    productionCost: production.value,
+    unpricedQuantity: production.unpricedQuantity,
   };
 }

@@ -6,6 +6,7 @@ import { requireRoles, requireSession } from "@/lib/api-session";
 import { INVENTORY_WRITE_ROLES as WRITE_ROLES } from "@/lib/inventory/permissions";
 import { writeAuditLog } from "@/lib/audit";
 import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
+import { loadProductionCostMap } from "@/lib/inventory/production-cost";
 import { toInventoryItemDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
@@ -51,13 +52,16 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  const rows = await prisma.inventoryItem.findMany({
-    where,
-    orderBy: [{ active: "desc" }, { name: "asc" }],
-  });
+  const [rows, costs] = await Promise.all([
+    prisma.inventoryItem.findMany({
+      where,
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+    }),
+    loadProductionCostMap(),
+  ]);
   const items = rows
     .filter((row) => !isExcludedInventoryItem(row))
-    .map(toInventoryItemDto);
+    .map((row) => toInventoryItemDto(row, costs));
   return NextResponse.json({ items });
 }
 

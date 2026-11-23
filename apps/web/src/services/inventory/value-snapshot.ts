@@ -1,11 +1,13 @@
 import { isExcludedInventoryItem } from "@/lib/inventory/excluded-codes";
 import { pragueMonth } from "@/lib/inventory/month";
-import { computeInventoryValue } from "@/lib/inventory/value";
+import { loadProductionCostMap } from "@/lib/inventory/production-cost";
+import { computeInventoryValue, computeProductionCost, parseSku } from "@/lib/inventory/value";
 import { prisma } from "@/lib/prisma";
 
 export type SnapshotRunResult = {
   month: string;
   written: { currency: string; value: number; itemsCount: number }[];
+  productionCost: { value: number; unpricedQuantity: number; quantityPieces: number };
   finalizedMonths: number;
 };
 
@@ -34,6 +36,30 @@ export async function runInventoryValueSnapshot(
     }));
   const values = computeInventoryValue(items);
 
+  // Výrobní náklady (Kč bez DPH) — stejné položky jako prodejní hodnota, kusy včetně kartonů ×N.
+  const costs = await loadProductionCostMap();
+  const prodItems = rows
+    .filter((r) => !isExcludedInventoryItem(r) && r.currency === "CZK")
+    .map((r) => {
+      const { baseSku, packSize } = parseSku(r.sku);
+      return {
+        active: r.active,
+        quantity: Number(r.quantity),
+        packSize,
+        productionUnitCost: costs.get(baseSku) ?? null,
+      };
+    });
+  const production = computeProductionCost(prodItems);
+  const pieces = production.pricedQuantity + production.unpricedQuantity;
+  const prodFields = (currency: string) =>
+    currency === "CZK"
+      ? {
+          valueProductionCost: production.value,
+          unpricedQuantity: production.unpricedQuantity,
+          quantityPieces: pieces,
+        }
+      : {};
+
   for (const v of values) {
     await prisma.inventoryValueSnapshot.upsert({
       where: { month_currency: { month, currency: v.currency } },
@@ -45,6 +71,7 @@ export async function runInventoryValueSnapshot(
         quantityTotal: v.quantityTotal,
         computedAt: now,
         source,
+        ...prodFields(v.currency),
       },
       update: {
         valueTotal: v.value,
@@ -53,6 +80,7 @@ export async function runInventoryValueSnapshot(
         computedAt: now,
         source,
         final: false,
+        ...prodFields(v.currency),
       },
     });
   }
@@ -65,6 +93,11 @@ export async function runInventoryValueSnapshot(
   return {
     month,
     written: values.map((v) => ({ currency: v.currency, value: v.value, itemsCount: v.itemsCount })),
+    productionCost: {
+      value: production.value,
+      unpricedQuantity: production.unpricedQuantity,
+      quantityPieces: pieces,
+    },
     finalizedMonths: closed.count,
   };
 }
@@ -76,6 +109,12 @@ export type SnapshotDto = {
   final: boolean;
   computedAt: string;
   itemsCount: number;
+  /** Výrobní náklady (Kč bez DPH): kusy × průměrná nákupní cena; null = snímek bez výrobních nákladů. */
+  productionCost: number | null;
+  /** Kusy bez výrobní ceny (neoceněno); null = neznámo. */
+  unpricedQuantity: number | null;
+  /** Celkem kusů (kartony přepočtené na kusy); null = neznámo. */
+  quantityPieces: number | null;
 };
 
 export async function listInventoryValueSnapshots(): Promise<SnapshotDto[]> {
@@ -89,5 +128,8 @@ export async function listInventoryValueSnapshots(): Promise<SnapshotDto[]> {
     final: r.final,
     computedAt: r.computedAt.toISOString(),
     itemsCount: r.itemsCount,
+    productionCost: r.valueProductionCost == null ? null : Number(r.valueProductionCost),
+    unpricedQuantity: r.unpricedQuantity == null ? null : Number(r.unpricedQuantity),
+    quantityPieces: r.quantityPieces == null ? null : Number(r.quantityPieces),
   }));
 }

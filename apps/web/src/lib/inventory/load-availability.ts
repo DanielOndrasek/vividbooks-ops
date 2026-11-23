@@ -20,7 +20,7 @@ export async function loadAvailability(): Promise<{
   });
 
   const rows = aggregateAvailability(
-    items.filter((it) => !isExcludedInventoryItem(it)).map(toInventoryItemDto),
+    items.filter((it) => !isExcludedInventoryItem(it)).map((it) => toInventoryItemDto(it)),
   ).filter((row) => !row.baseCode.toUpperCase().startsWith("UF"));
 
   return { rows, summary: summarizeAvailability(rows) };

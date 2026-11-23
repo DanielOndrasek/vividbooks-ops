@@ -10,6 +10,7 @@ import {
 } from "@/lib/inventory/serialize";
 import { canWriteInventory } from "@/lib/inventory/permissions";
 import { InventoryValueHistory } from "@/components/inventory-value-history";
+import { loadProductionCostMap } from "@/lib/inventory/production-cost";
 import { prisma } from "@/lib/prisma";
 import { listInventoryValueSnapshots } from "@/services/inventory/value-snapshot";
 
@@ -20,7 +21,7 @@ export default async function InventoryPage() {
   const role = session?.user?.role;
   const canWrite = canWriteInventory(role);
 
-  const [snapshots, itemsRaw, movementsRaw] = await Promise.all([
+  const [snapshots, itemsRaw, movementsRaw, costs] = await Promise.all([
     listInventoryValueSnapshots().catch(() => []),
     prisma.inventoryItem.findMany({
       orderBy: [{ active: "desc" }, { name: "asc" }],
@@ -33,6 +34,7 @@ export default async function InventoryPage() {
         createdBy: { select: { name: true, email: true } },
       },
     }),
+    loadProductionCostMap().catch(() => new Map<string, number>()),
   ]);
 
   const items = itemsRaw.filter((it) => !isExcludedInventoryItem(it));
@@ -61,7 +63,7 @@ export default async function InventoryPage() {
       </header>
 
       <InventoryClient
-        initialItems={items.map(toInventoryItemDto)}
+        initialItems={items.map((it) => toInventoryItemDto(it, costs))}
         initialMovements={movements.map(toInventoryMovementDto)}
         canWrite={canWrite}
       />

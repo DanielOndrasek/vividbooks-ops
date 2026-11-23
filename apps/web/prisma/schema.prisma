@@ -439,6 +439,12 @@ model InventoryValueSnapshot {
   /// Aktivní položky s cenou a kladným stavem.
   itemsCount    Int
   quantityTotal Decimal  @db.Decimal(16, 3)
+  /// Výrobní náklady: kusy × průměrná nákupní cena (Kč bez DPH). NULL = před zavedením.
+  valueProductionCost Decimal? @db.Decimal(16, 2)
+  /// Kusy bez výrobní ceny (neoceněno).
+  unpricedQuantity    Decimal? @db.Decimal(16, 3)
+  /// Celkem kusů (kartony `-C<N>` přepočtené na kusy).
+  quantityPieces      Decimal? @db.Decimal(16, 3)
   computedAt    DateTime @default(now())
   final         Boolean  @default(false)
   /// job | manual | backfill
@@ -446,6 +452,23 @@ model InventoryValueSnapshot {
 
   @@unique([month, currency])
   @@index([month])
+}
+
+/// Výrobní náklady: průměrná nákupní cena za 1 kus (Kč bez DPH) po základním SKU (bez `-C<N>`).
+/// Samostatná tabulka, aby ji synchronizace z Fulfillmentu nikdy nepřepsala.
+model ProductionCost {
+  id              String   @id @default(cuid())
+  baseSku         String   @unique
+  unitCost        Decimal  @db.Decimal(12, 4)
+  currency        String   @default("CZK")
+  /// Kolik kusů cena vychází (váha průměru).
+  qtyPurchased    Int      @default(0)
+  /// Čísla faktur, ze kterých cena vznikla.
+  sourceInvoices  String[] @default([])
+  /// seed | invoice | manual
+  method          String   @default("manual")
+  updatedAt       DateTime @default(now()) @updatedAt
+  updatedByUserId String?
 }
 
 /// Pohyb na skladě (příjem / výdej / korekce). Mění `InventoryItem.quantity` a uchovává historii.
