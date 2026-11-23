@@ -427,6 +427,27 @@ model InventoryShareLink {
   @@index([active])
 }
 
+/// Měsíční snímek hodnoty skladu (po měnách). Denní job upsertuje aktuální měsíc,
+/// první běh v novém měsíci předchozí měsíc uzavře (`final = true`).
+model InventoryValueSnapshot {
+  id            String   @id @default(cuid())
+  /// Měsíc RRRR-MM (Europe/Prague).
+  month         String
+  currency      String   @default("CZK")
+  /// Součet quantity × unitPrice aktivních položek s cenou.
+  valueTotal    Decimal  @db.Decimal(16, 2)
+  /// Aktivní položky s cenou a kladným stavem.
+  itemsCount    Int
+  quantityTotal Decimal  @db.Decimal(16, 3)
+  computedAt    DateTime @default(now())
+  final         Boolean  @default(false)
+  /// job | manual | backfill
+  source        String   @default("job")
+
+  @@unique([month, currency])
+  @@index([month])
+}
+
 /// Pohyb na skladě (příjem / výdej / korekce). Mění `InventoryItem.quantity` a uchovává historii.
 model InventoryMovement {
   id              String                @id @default(cuid())

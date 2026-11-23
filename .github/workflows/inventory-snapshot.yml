@@ -1,0 +1,38 @@
+# Denní snímek hodnoty skladu (měsíční historie pro CRM). Volá GET /api/jobs/inventory-snapshot
+# (Bearer CRON_SECRET): sync z Fulfillment.cz + upsert snímku aktuálního měsíce; první běh v novém
+# měsíci uzavře předchozí. Vyžaduje repository secret CRON_SECRET (jako sync-inventory).
+
+name: Inventory value snapshot (daily)
+
+on:
+  schedule:
+    - cron: "20 21 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: inventory-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger snapshot
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://vividbooks-ops.vercel.app' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Chybí repository secret CRON_SECRET." >&2
+            exit 1
+          fi
+          BASE="${APP_URL%/}"
+          code=$(curl -sS -m 300 --retry 3 --retry-delay 15 --retry-all-errors \
+            -o /tmp/snap.json -w "%{http_code}" -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/jobs/inventory-snapshot")
+          echo "HTTP ${code}"
+          cat /tmp/snap.json 2>/dev/null || true
+          echo
+          [ "${code}" = "200" ] || { echo "::error::Snímek skladu selhal (HTTP ${code})." >&2; exit 1; }

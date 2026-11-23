@@ -1,3 +1,5 @@
+import { valueByCurrency as valueByCurrencyOf } from "./value";
+
 export type StockStatus = "ok" | "low" | "out";
 
 export type InventoryMovementType = "IN" | "OUT" | "ADJUSTMENT";
@@ -71,7 +73,7 @@ export function stockStatus(item: {
 }
 
 export function buildInventorySummary(items: InventoryItemDto[]): InventorySummary {
-  const valueByCurrency: Record<string, number> = {};
+  const valueByCurrency = valueByCurrencyOf(items);
   let activeItems = 0;
   let lowStockCount = 0;
   let outOfStockCount = 0;
@@ -87,11 +89,6 @@ export function buildInventorySummary(items: InventoryItemDto[]): InventorySumma
       outOfStockCount += 1;
     } else if (status === "low") {
       lowStockCount += 1;
-    }
-
-    if (item.unitPrice != null) {
-      const ccy = item.currency || "CZK";
-      valueByCurrency[ccy] = (valueByCurrency[ccy] ?? 0) + item.unitPrice * item.quantity;
     }
   }
 

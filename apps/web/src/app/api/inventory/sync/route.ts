@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
+import { INVENTORY_SYNC_ROLES } from "@/lib/inventory/permissions";
 import { writeAuditLog } from "@/lib/audit";
 import { runFulfillmentInventorySync } from "@/services/fulfillment/sync-inventory";
 
@@ -12,7 +13,7 @@ export async function POST() {
   if (response) {
     return response;
   }
-  const denied = requireRoles(session!, ["ADMIN", "APPROVER"]);
+  const denied = requireRoles(session!, [...INVENTORY_SYNC_ROLES]);
   if (denied) {
     return denied;
   }

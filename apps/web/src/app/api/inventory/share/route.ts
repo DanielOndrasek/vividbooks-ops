@@ -3,12 +3,12 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
+import { INVENTORY_WRITE_ROLES as WRITE_ROLES } from "@/lib/inventory/permissions";
 import { writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const WRITE_ROLES = ["ADMIN", "APPROVER"] as const;
 
 /** Aktuální veřejný sdílený odkaz na dostupnou zásobu (token, nebo null). */
 export async function GET() {

@@ -8,16 +8,20 @@ import {
   toInventoryItemDto,
   toInventoryMovementDto,
 } from "@/lib/inventory/serialize";
+import { canWriteInventory } from "@/lib/inventory/permissions";
+import { InventoryValueHistory } from "@/components/inventory-value-history";
 import { prisma } from "@/lib/prisma";
+import { listInventoryValueSnapshots } from "@/services/inventory/value-snapshot";
 
 export const dynamic = "force-dynamic";
 
 export default async function InventoryPage() {
   const session = await auth();
   const role = session?.user?.role;
-  const canWrite = role === "ADMIN" || role === "APPROVER";
+  const canWrite = canWriteInventory(role);
 
-  const [itemsRaw, movementsRaw] = await Promise.all([
+  const [snapshots, itemsRaw, movementsRaw] = await Promise.all([
+    listInventoryValueSnapshots().catch(() => []),
     prisma.inventoryItem.findMany({
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
@@ -61,6 +65,8 @@ export default async function InventoryPage() {
         initialMovements={movements.map(toInventoryMovementDto)}
         canWrite={canWrite}
       />
+
+      <InventoryValueHistory snapshots={snapshots} />
     </div>
   );
 }

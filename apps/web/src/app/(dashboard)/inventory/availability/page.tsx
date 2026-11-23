@@ -6,6 +6,7 @@ import { InventoryAvailabilityTable } from "@/components/inventory-availability"
 import { InventoryLowStock } from "@/components/inventory-low-stock";
 import { InventoryShareControl } from "@/components/inventory-share-control";
 import { loadAvailability } from "@/lib/inventory/load-availability";
+import { canWriteInventory } from "@/lib/inventory/permissions";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function InventoryAvailabilityPage() {
   const session = await auth();
   const role = session?.user?.role;
-  const canWrite = role === "ADMIN" || role === "APPROVER";
+  const canWrite = canWriteInventory(role);
 
   const [{ rows }, shareLink] = await Promise.all([
     loadAvailability(),

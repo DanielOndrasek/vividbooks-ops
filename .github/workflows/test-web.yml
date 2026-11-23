@@ -12,4 +12,4 @@ jobs:
           node-version: "24"
       - name: Unit tests (bez závislostí, node:test)
         working-directory: apps/web
-        run: node --test src/lib/inventory/eshop-prices.test.ts
+        run: node --test src/lib/inventory/eshop-prices.test.ts tests/inventory-value.test.mjs
