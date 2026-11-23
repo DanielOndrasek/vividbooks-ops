@@ -1,6 +1,7 @@
 import type { InventoryItem, InventoryMovement, User } from "@prisma/client";
 
 import type { InventoryItemDto, InventoryMovementDto } from "@/lib/inventory/types";
+import { parseSku, type ProductionCostMap } from "@/lib/inventory/value";
 
 type DecimalLike = { toString(): string } | null | undefined;
 
@@ -20,7 +21,11 @@ function toNullableNumber(value: DecimalLike): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function toInventoryItemDto(row: InventoryItem): InventoryItemDto {
+export function toInventoryItemDto(
+  row: InventoryItem,
+  costs?: ProductionCostMap,
+): InventoryItemDto {
+  const { baseSku, packSize } = parseSku(row.sku);
   return {
     id: row.id,
     sku: row.sku,
@@ -30,6 +35,8 @@ export function toInventoryItemDto(row: InventoryItem): InventoryItemDto {
     quantity: toNumber(row.quantity),
     minQuantity: toNullableNumber(row.minQuantity),
     unitPrice: toNullableNumber(row.unitPrice),
+    productionUnitCost: costs?.get(baseSku) ?? null,
+    packSize,
     currency: row.currency,
     location: row.location,
     supplier: row.supplier,

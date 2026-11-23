@@ -114,11 +114,13 @@ function KpiCard({
   icon,
   label,
   value,
+  hint,
   tone = "default",
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
+  hint?: ReactNode;
   tone?: "default" | "amber" | "red";
 }) {
   const toneClass =
@@ -136,6 +138,7 @@ function KpiCard({
       <div className="text-foreground mt-1 text-3xl font-semibold tabular-nums tracking-tight">
         {value}
       </div>
+      {hint ? <div className="text-muted-foreground mt-2 text-xs leading-snug">{hint}</div> : null}
     </div>
   );
 }
@@ -148,6 +151,7 @@ const EMPTY_ADD = {
   quantity: "",
   minQuantity: "",
   unitPrice: "",
+  productionCost: "",
   currency: "CZK",
   location: "",
   supplier: "",
@@ -346,6 +350,7 @@ export function InventoryClient({
       quantity: String(row.quantity),
       minQuantity: row.minQuantity != null ? String(row.minQuantity) : "",
       unitPrice: row.unitPrice != null ? String(row.unitPrice) : "",
+      productionCost: row.productionUnitCost != null ? String(row.productionUnitCost) : "",
       currency: row.currency,
       location: row.location ?? "",
       supplier: row.supplier ?? "",
@@ -366,8 +371,9 @@ export function InventoryClient({
       }
       const minQuantity = parseNum(edit.minQuantity);
       const unitPrice = parseNum(edit.unitPrice);
-      if (Number.isNaN(minQuantity) || Number.isNaN(unitPrice)) {
-        fail("Minimum a cena musí být čísla.");
+      const productionCost = parseNum(edit.productionCost);
+      if (Number.isNaN(minQuantity) || Number.isNaN(unitPrice) || Number.isNaN(productionCost)) {
+        fail("Minimum a ceny musí být čísla.");
         return;
       }
       const res = await fetch(`/api/inventory/items/${id}`, {
@@ -390,6 +396,19 @@ export function InventoryClient({
       if (!res.ok) {
         fail(j.error || "Chyba");
         return;
+      }
+      const before = items.find((it) => it.id === id)?.productionUnitCost ?? null;
+      if (productionCost !== before) {
+        const costRes = await fetch("/api/inventory/production-costs", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sku: edit.sku.trim(), unitCost: productionCost }),
+        });
+        if (!costRes.ok) {
+          const cj = (await costRes.json()) as { error?: string };
+          fail(cj.error || "Výrobní cenu se nepodařilo uložit.");
+          return;
+        }
       }
       setEditingId(null);
       await refresh();
@@ -490,7 +509,7 @@ export function InventoryClient({
 
   return (
     <div className="space-y-8 pb-4">
-      <section aria-label="Souhrn" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="Souhrn" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
           icon={<Boxes className="size-5" aria-hidden />}
           label="Aktivní položky"
@@ -498,7 +517,8 @@ export function InventoryClient({
         />
         <KpiCard
           icon={<Warehouse className="size-5" aria-hidden />}
-          label="Hodnota skladu"
+          label="Prodejní hodnota (s DPH)"
+          hint="Stav × prodejní cena z e-shopu (kartony `-C10` se počítají jako 1 položka)."
           value={
             valueCurrencies.length === 0 ? (
               <span className="text-muted-foreground text-xl">—</span>
@@ -512,6 +532,24 @@ export function InventoryClient({
                 ))}
               </span>
             )
+          }
+        />
+        <KpiCard
+          icon={<Warehouse className="size-5" aria-hidden />}
+          label="Výrobní náklady (bez DPH)"
+          hint={
+            <>
+              Kusy (kartony ×N) × průměrná nákupní cena podle faktur tiskárny GRASPO.
+              {summary.unpricedQuantity > 0
+                ? ` Neoceněno ${fmtQty(summary.unpricedQuantity)} ks (bez ceny, v hodnotě nejsou).`
+                : ""}
+            </>
+          }
+          value={
+            <span className="text-2xl">
+              {fmtMoney(summary.productionCost)}{" "}
+              <span className="text-muted-foreground text-sm font-medium">CZK</span>
+            </span>
           }
         />
         <KpiCard
@@ -726,6 +764,7 @@ export function InventoryClient({
                   <Th className="text-right">Min.</Th>
                   <Th className="text-right">Jedn. cena</Th>
                   <Th className="text-right">Hodnota</Th>
+                  <Th className="text-right">Výrobní cena/ks</Th>
                   <Th>Lokace</Th>
                   <Th>Stav zásoby</Th>
                   {canWrite && <Th className="text-right">Akce</Th>}
@@ -797,6 +836,21 @@ export function InventoryClient({
                             </>
                           ) : (
                             "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
+                          {row.productionUnitCost != null ? (
+                            <>
+                              {fmtMoney(row.productionUnitCost)}{" "}
+                              <span className="text-muted-foreground text-xs">Kč/ks</span>
+                              {row.packSize > 1 ? (
+                                <div className="text-muted-foreground text-[11px] font-normal">
+                                  balení {row.packSize} ks: {fmtMoney(row.productionUnitCost * row.packSize)}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground" title="Bez výrobní ceny (neoceněno)">—</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground text-xs">
@@ -974,6 +1028,14 @@ export function InventoryClient({
                                   className="inv-input"
                                   value={edit.unitPrice}
                                   onChange={(e) => setEdit({ ...edit, unitPrice: e.target.value })}
+                                />
+                              </Field>
+                              <Field label="Výrobní cena za kus (Kč bez DPH)">
+                                <input
+                                  className="inv-input"
+                                  value={edit.productionCost}
+                                  placeholder="prázdné = neoceněno"
+                                  onChange={(e) => setEdit({ ...edit, productionCost: e.target.value })}
                                 />
                               </Field>
                               <Field label="Měna">
