@@ -3,13 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireRoles, requireSession } from "@/lib/api-session";
+import { INVENTORY_WRITE_ROLES as WRITE_ROLES } from "@/lib/inventory/permissions";
 import { writeAuditLog } from "@/lib/audit";
 import { toInventoryItemDto } from "@/lib/inventory/serialize";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const WRITE_ROLES = ["ADMIN", "APPROVER"] as const;
 
 const patchSchema = z.object({
   sku: z.string().min(1).max(120).optional(),
